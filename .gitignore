@@ -1,0 +1,58 @@
+# =========================
+# Python / Virtual Envs
+# =========================
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+
+# =========================
+# Build / Packaging
+# =========================
+*.egg-info/
+dist/
+build/
+
+# =========================
+# Test / Tooling Cache
+# =========================
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# =========================
+# Meltano / Singer Artifacts
+# =========================
+output.json
+output2.jsonl
+output.jsonl
+reviews.csv
+
+# =========================
+# Local / Debug Files
+# =========================
+debug_no_reviews.png
+*.log
+
+# =========================
+# OS / Editor Noise
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Secrets / Real Configs
+# =========================
+config.json
+.env
+.env.*
+
+# =========================
+# PDF
+# =========================
+
+Internship Assignment.pdf

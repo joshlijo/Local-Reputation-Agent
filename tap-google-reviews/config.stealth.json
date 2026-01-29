@@ -1,0 +1,6 @@
+{
+  "google_maps_url": "https://maps.app.goo.gl/cGamxLRZ6VqMfCXB7",
+  "headless": false,
+  "max_pages": 20,
+  "rate_limit_seconds": 2
+}

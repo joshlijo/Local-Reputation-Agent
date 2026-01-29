@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tap-google-reviews"
+version = "0.1.0"
+description = "Meltano SDK tap for scraping Google Maps reviews using Playwright"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = [
+    "singer-sdk>=0.36.0",
+    "playwright>=1.40.0",
+    "python-dateutil>=2.8.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-mock>=3.10",
+]
+
+[project.scripts]
+tap-google-reviews = "tap_google_reviews.tap:TapGoogleReviews.cli"
+
+[tool.setuptools.packages.find]
+include = ["tap_google_reviews*"]

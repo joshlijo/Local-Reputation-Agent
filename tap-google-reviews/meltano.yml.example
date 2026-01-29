@@ -1,0 +1,17 @@
+plugins:
+  extractors:
+  - name: tap-google-reviews
+    namespace: tap_google_reviews
+    pip_url: -e .
+    executable: tap-google-reviews
+    config:
+      google_maps_url: https://maps.app.goo.gl/cGamxLRZ6VqMfCXB7
+      headless: true
+      max_pages: 100
+    select:
+    - reviews.*
+
+  loaders:
+  - name: target-jsonl
+    variant: andyh1203
+    pip_url: target-jsonl
