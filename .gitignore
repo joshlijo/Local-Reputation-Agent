@@ -54,5 +54,16 @@ config.json
 # =========================
 # PDF
 # =========================
-
 Internship Assignment.pdf
+
+# =========================
+# Excel / Binary Artifacts (VIEW ONLY)
+# =========================
+*.xlsx
+*.xls
+~$*.xlsx
+
+# =========================
+# Sentiment Analysis Outputs
+# =========================
+sentiment-analysis/outputs/
