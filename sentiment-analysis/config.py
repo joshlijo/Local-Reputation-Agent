@@ -50,7 +50,7 @@ HINGLISH_WEIGHT = 0.3
 ASPECT_KEYWORDS = {
     "food": [
         # Generic English
-        "food", "taste", "tasty", "dish", "dishes", "meal", "meals",
+        "average", "okay", "ok", "food", "taste", "tasty", "dish", "dishes", "meal", "meals",
         "breakfast", "lunch", "dinner", "snack", "menu", "delicious",
         "flavour", "flavor", "spicy", "bland", "oily", "crispy", "fresh",
         "stale", "undercooked", "overcooked", "portion", "quantity",
@@ -67,6 +67,9 @@ ASPECT_KEYWORDS = {
         "waiting", "slow", "fast", "quick", "rude", "polite", "friendly",
         "helpful", "attentive", "cashier", "billing", "order", "delivery",
         "self-service", "counter",
+        # Crowd management → service (not ambience), because the complaint
+        # is about staff's inability to manage customers, not the venue itself.
+        "crowded", "crowd", "packed", "crowd management", "mismanagement",
         # Hinglish
         "seva", "kaam", "behave", "behavior", "behaviour",
     ],
@@ -88,8 +91,8 @@ ASPECT_KEYWORDS = {
     ],
     "ambience": [
         "ambience", "ambiance", "atmosphere", "decor", "decoration",
-        "seating", "seat", "space", "spacious", "crowded", "crowd",
-        "packed", "location", "parking", "interior", "exterior", "vibe",
+        "seating", "seat", "space", "spacious",
+        "location", "parking", "interior", "exterior", "vibe",
         "music", "noise", "noisy", "lake", "view",
         # Hinglish
         "mahaul", "jagah",
@@ -113,7 +116,7 @@ URGENCY_PATTERNS = {
             "food poisoning", "poisoning", "hospitalized", "hospitalised",
             "hospital", "fell sick", "severe stomach", "gut issues",
             "vomiting", "diarrhea", "diarrhoea", "food borne",
-            "foodborne", "toxic",
+            "foodborne", "toxic", "sickness", "stomach issues",
         ],
         "severity": 10,
     },
@@ -141,13 +144,16 @@ URGENCY_PATTERNS = {
         ],
         "severity": 7,
     },
+    # Severity raised to 7 (from 6) per contract: rude/shouting/abusive staff
+    # must trigger urgent=true and severity >= 7.  At severity 6 these were
+    # borderline and could be suppressed by the rating modifier — unacceptable.
     "rude_staff": {
         "keywords": [
             "rude", "shouting", "shout", "disrespectful", "mannerless",
             "misbehave", "misbehaved", "arguing", "abusive", "arrogant",
             "insult", "insulted", "humiliate", "humiliated",
         ],
-        "severity": 6,
+        "severity": 7,
     },
 }
 

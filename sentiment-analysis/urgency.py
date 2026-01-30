@@ -10,16 +10,30 @@ Design choice — why keyword matching instead of ML?
   keyword lists give us high recall for known patterns.
 - The severity scoring system lets us rank urgency — a food poisoning
   hospitalisation (severity 10) is more urgent than a rude-staff complaint
-  (severity 6).
+  (severity 7).
 
-Edge case handling:
-- Positive context with urgency keywords (e.g. "No stomach issues!") is
-  partially mitigated by checking the star rating: a 5-star review with
-  a urgency keyword gets its severity reduced because the reviewer is
-  clearly not complaining.
+CRITICAL SAFETY RULE (added in refactor):
+- Health/safety categories (food_poisoning, hygiene_severe, authority_escalation,
+  safety_concern) must NEVER have their severity reduced by a high star rating.
+  A 5-star review mentioning "food poisoning" in positive context (e.g. "No food
+  poisoning!") is handled by the sentiment layer, not by suppressing urgency.
+  Suppressing urgency here caused silent failures where sickness reports were
+  downgraded and missed by alerting.
 """
 
 import config
+
+
+# Categories where severity must never be reduced, regardless of rating.
+# Rationale: a food poisoning mention in ANY context warrants investigation.
+# False positives (e.g. "No stomach issues!") are cheaper than false negatives
+# (missing an actual poisoning report).
+_HEALTH_SAFETY_CATEGORIES = frozenset({
+    "food_poisoning",
+    "hygiene_severe",
+    "authority_escalation",
+    "safety_concern",
+})
 
 
 def detect_urgency(review_text: str, rating: int) -> dict:
@@ -45,6 +59,8 @@ def detect_urgency(review_text: str, rating: int) -> dict:
     max_severity = 0
     best_category = "none"
     all_matches = []
+    # Track whether the highest-severity category is health/safety.
+    best_is_health_safety = False
 
     for category, cfg in config.URGENCY_PATTERNS.items():
         matches = [kw for kw in cfg["keywords"] if kw in text_lower]
@@ -53,15 +69,25 @@ def detect_urgency(review_text: str, rating: int) -> dict:
             if cfg["severity"] > max_severity:
                 max_severity = cfg["severity"]
                 best_category = category
+                best_is_health_safety = category in _HEALTH_SAFETY_CATEGORIES
 
-    # Rating modifiers:
-    # 1-star + urgency keyword → boost severity (reviewer is angry AND reporting)
-    # 4-5 stars + urgency keyword → reduce severity (likely positive context,
-    #   e.g. "No stomach issues afterwards!" from a 5-star review)
-    if all_matches:
+    # Rating modifiers — ONLY for non-health/safety categories.
+    #
+    # OLD BUG: rating >= 4 reduced severity by 3 for ALL categories.
+    # This caused food_poisoning (10) to drop to 7, and hygiene_severe (9)
+    # to drop to 6 — barely urgent.  Contract requires:
+    #   "hygiene severe → urgency true even if rating ≥ 4"
+    #   "food poisoning / hospitalization → urgent = true, severity = 10"
+    #
+    # FIX: Only apply rating modifier to non-health/safety categories
+    # (currently just rude_staff).  For health/safety, severity is never
+    # reduced — false positives are acceptable, false negatives are not.
+    if all_matches and not best_is_health_safety:
         if rating == 1:
             max_severity = min(10, max_severity + 1)
         elif rating >= 4:
+            # Positive-context mentions of rude_staff keywords with high
+            # rating are likely not genuine complaints — reduce severity.
             max_severity = max(0, max_severity - 3)
 
     urgent = max_severity >= config.URGENCY_THRESHOLD
