@@ -28,6 +28,7 @@ from sentiment import classify_sentiment
 from aspects import detect_aspects
 from urgency import detect_urgency
 from sentiment_rules import enforce_contract
+from gemini_agent import analyze_review as gemini_analyze
 
 
 def _deduplicate_reviews(reviews: list[dict], logger) -> list[dict]:
@@ -65,6 +66,77 @@ def _deduplicate_reviews(reviews: list[dict], logger) -> list[dict]:
     return unique
 
 
+def _fuse_results(record: dict, llm_result: dict | None, logger) -> dict:
+    """
+    Fuse LLM opinion with deterministic signals, inline.
+
+    Rules:
+    - Sentiment: if both agree, keep deterministic confidence. If they
+      disagree, prefer LLM sentiment but cap confidence.  Safety-related
+      disagreements cap confidence at MEDIUM max.
+    - Aspects: union.  For shared aspects, prefer LLM sentiment.  LLM
+      evidence maps into mentions list.
+    - Urgency: OR logic (either source can flag urgent).
+    - Always record llm_sentiment and llm_reasoning for auditability.
+    """
+    if llm_result is None:
+        record["llm_sentiment"] = None
+        record["llm_reasoning"] = None
+        return record
+
+    record["llm_sentiment"] = llm_result["overall_sentiment"]
+    record["llm_reasoning"] = llm_result.get("reasoning")
+
+    det_sentiment = record["overall_sentiment"]
+    llm_sentiment = llm_result["overall_sentiment"]
+
+    # --- Sentiment fusion ---
+    if det_sentiment == llm_sentiment:
+        pass  # keep deterministic confidence as-is
+    else:
+        record["overall_sentiment"] = llm_sentiment
+        # Safety-related disagreement: cap at MEDIUM
+        is_safety_related = (
+            record.get("urgent")
+            or llm_result.get("urgent")
+            or any(a["aspect"] in ("hygiene", "safety")
+                   for a in llm_result.get("aspects", []))
+        )
+        if is_safety_related:
+            if record["confidence"] == "HIGH":
+                record["confidence"] = "MEDIUM"
+        else:
+            record["confidence"] = "LOW"
+
+    # --- Aspect fusion ---
+    det_aspects = record.get("aspect_sentiments", {})
+    for llm_asp in llm_result.get("aspects", []):
+        name = llm_asp["aspect"]
+        if name in det_aspects:
+            # LLM overrides sentiment for shared aspects
+            det_aspects[name]["sentiment"] = llm_asp["sentiment"]
+            evidence = llm_asp.get("evidence", "")
+            if evidence and evidence not in det_aspects[name].get("mentions", []):
+                det_aspects[name].setdefault("mentions", []).append(evidence)
+        else:
+            # LLM-only aspect: add it
+            det_aspects[name] = {
+                "sentiment": llm_asp["sentiment"],
+                "score": 0.0,  # no VADER score available
+                "mentions": [llm_asp.get("evidence", "")],
+            }
+    record["aspect_sentiments"] = det_aspects
+    record["aspects_detected"] = list(det_aspects.keys())
+
+    # --- Urgency fusion (OR logic) ---
+    if llm_result.get("urgent") and not record.get("urgent"):
+        record["urgent"] = True
+        if llm_result.get("urgency_reason"):
+            record["urgency_reason"] = llm_result["urgency_reason"]
+
+    return record
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Analyse restaurant reviews: sentiment, aspects, urgency."
@@ -84,6 +156,11 @@ def main():
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
+    parser.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="Disable Gemini LLM calls (deterministic-only mode)",
+    )
     args = parser.parse_args()
 
     logger = setup_logging(args.log_level)
@@ -97,18 +174,26 @@ def main():
     reviews = _deduplicate_reviews(reviews, logger)
 
     # Process each review
+    use_llm = not args.no_llm
+    if use_llm:
+        logger.info("LLM mode enabled (Gemini)")
+    else:
+        logger.info("LLM mode disabled (--no-llm)")
+
     results = []
     for i, review in enumerate(reviews):
         text = review["review_text"]
         rating = review["rating"]
+        name = review["reviewer_name"]
 
+        # Step 1-3: deterministic signals
         sentiment_result = classify_sentiment(text, rating)
         aspect_result = detect_aspects(text)
         urgency_result = detect_urgency(text, rating)
 
         record = {
             "review_id": review["review_id"],
-            "reviewer_name": review["reviewer_name"],
+            "reviewer_name": name,
             "review_text": text,
             "rating": rating,
             "review_date": review["review_date"],
@@ -128,13 +213,15 @@ def main():
             "matched_patterns": urgency_result["matched_patterns"],
         }
 
-        # --- CONTRACT ENFORCEMENT (NEW) ---
-        # This is the final safety net.  After all three modules have
-        # produced their results, enforce cross-module invariants:
-        #   - urgency overrides sentiment (always)
-        #   - rating ceiling is respected
-        #   - forbidden aspect sentiment states are corrected
-        # See sentiment_rules.py for the full list of invariants.
+        # Step 3.5: LLM semantic reasoning + fusion
+        llm_result = None
+        if use_llm:
+            llm_result = gemini_analyze(text, rating, name)
+        record = _fuse_results(record, llm_result, logger)
+
+        # Step 4: CONTRACT ENFORCEMENT — final safety net.
+        # Enforces cross-module invariants (urgency overrides sentiment,
+        # rating ceiling, forbidden aspect states).  Has final authority.
         record = enforce_contract(record)
 
         results.append(record)
