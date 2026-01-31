@@ -35,6 +35,7 @@ reviews.csv
 # =========================
 debug_no_reviews.png
 *.log
+test.py
 
 # =========================
 # OS / Editor Noise
@@ -69,7 +70,11 @@ Internship Assignment.pdf
 sentiment-analysis/outputs/
 
 # =========================
+# Agent Runtime State
+# =========================
+agent/reputation.db
+
+# =========================
 # HuggingFace
 # =========================
-
 .huggingface/
