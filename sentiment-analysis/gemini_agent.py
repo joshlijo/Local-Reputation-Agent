@@ -84,7 +84,7 @@ def _get_model():
 
     genai.configure(api_key=api_key)
     _model = genai.GenerativeModel(
-        model_name=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
+        model_name=os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest"),
         system_instruction=_SYSTEM_PROMPT,
         generation_config={
             "response_mime_type": "application/json",

@@ -89,9 +89,10 @@ def run_cycle():
         return
 
     # -------------------------------------------------------------------------
-    # 3. Process each new review
+    # 3. Process each new review (collect first, draft later)
     # -------------------------------------------------------------------------
-    drafted = 0
+    urgent_queue = []
+    normal_negative_queue = []
 
     for i, review in enumerate(new_reviews):
         text = review["review_text"]
@@ -121,33 +122,15 @@ def run_cycle():
             "matched_patterns": urgency_result["matched_patterns"],
         }
 
-        # Enforce sentiment contract invariants
         record = enforce_contract(record)
-
-        # Save review to DB
         insert_review(record)
 
-        # ---------------------------------------------------------------------
-        # 4. Draft response for SOME negative reviews (rate-limited)
-        # ---------------------------------------------------------------------
+        # Queue for drafting later
         if rating <= agent_config.NEGATIVE_RATING_MAX:
-            if drafted < MAX_DRAFTS_PER_RUN:
-                draft = draft_response(
-                    text,
-                    rating,
-                    review["reviewer_name"],
-                    agent_config.BUSINESS_NAME,
-                    agent_config.HF_TOKEN,
-                    agent_config.HF_MODEL,
-                )
-                insert_response(review["review_id"], draft)
-                drafted += 1
+            if record["urgent"]:
+                urgent_queue.append(review)
             else:
-                # LLM budget exhausted — still enqueue without AI draft
-                insert_response(
-                    review["review_id"],
-                    "[AI draft skipped due to rate limit — please draft manually.]",
-                )
+                normal_negative_queue.append(review)
 
         if (i + 1) % 25 == 0:
             logger.info(
@@ -155,6 +138,37 @@ def run_cycle():
                 i + 1,
                 len(new_reviews),
             )
+
+    # -------------------------------------------------------------------------
+    # 4. Draft responses (URGENT first, capped)
+    # -------------------------------------------------------------------------
+    drafted = 0
+
+    for review in urgent_queue + normal_negative_queue:
+        if drafted >= MAX_DRAFTS_PER_RUN:
+            break
+
+        draft = draft_response(
+            review["review_text"],
+            review["rating"],
+            review["reviewer_name"],
+            agent_config.BUSINESS_NAME,
+            agent_config.GOOGLE_API_KEY,
+            agent_config.GEMINI_MODEL,
+        )
+
+        insert_response(review["review_id"], draft)
+        drafted += 1
+
+    # Add placeholders for skipped negatives
+    skipped = urgent_queue + normal_negative_queue
+    for review in skipped[drafted:]:
+        insert_response(
+            review["review_id"],
+            "[AI draft skipped due to rate limit — please draft manually.]",
+        )
+
+
 
     logger.info(
         "Cycle complete: %d reviews processed, %d AI responses drafted (cap=%d)",

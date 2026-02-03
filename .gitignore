@@ -78,3 +78,14 @@ agent/reputation.db
 # HuggingFace
 # =========================
 .huggingface/
+
+# =========================
+# Claude / AI tool artifacts
+# =========================
+.claude/
+
+# =========================
+# Windows junk files
+# =========================
+nul
+**/nul

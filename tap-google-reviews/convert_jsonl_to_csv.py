@@ -2,7 +2,7 @@ import json
 import csv
 from pathlib import Path
 
-INPUT_FILE = "output2.jsonl"
+INPUT_FILE = "output.jsonl"
 OUTPUT_FILE = "reviews.csv"
 
 def jsonl_to_csv(input_path: str, output_path: str):
