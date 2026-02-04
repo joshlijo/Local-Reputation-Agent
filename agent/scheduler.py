@@ -68,6 +68,13 @@ def run_cycle():
         reviews = load_reviews(agent_config.INPUT_CSV)
     except FileNotFoundError:
         logger.error("Input CSV not found: %s", agent_config.INPUT_CSV)
+        logger.info("")
+        logger.info("To generate reviews.csv, run the scraper pipeline:")
+        logger.info("  1. cd tap-google-reviews")
+        logger.info("  2. python -m tap_google_reviews.tap --config config.json > output.jsonl")
+        logger.info("  3. python convert_jsonl_to_csv.py")
+        logger.info("")
+        logger.info("Then re-run this scheduler.")
         return
 
     logger.info("Loaded %d reviews from CSV", len(reviews))

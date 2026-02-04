@@ -34,6 +34,7 @@ reviews.csv
 # Local / Debug Files
 # =========================
 debug_no_reviews.png
+debug_before_click.png
 *.log
 test.py
 
@@ -83,9 +84,9 @@ agent/reputation.db
 # Claude / AI tool artifacts
 # =========================
 .claude/
+CLAUDE.md
 
 # =========================
 # Windows junk files
 # =========================
 nul
-**/nul
