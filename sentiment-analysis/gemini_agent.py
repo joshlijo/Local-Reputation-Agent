@@ -19,6 +19,9 @@ import json
 import logging
 import os
 
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 logger = logging.getLogger(__name__)
 
 _ALLOWED_ASPECTS = {"food", "service", "hygiene", "price", "ambience", "safety"}
@@ -76,9 +79,9 @@ def _get_model():
         _model_unavailable = True
         return None
 
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        logger.warning("GOOGLE_API_KEY not set; LLM disabled")
+        logger.warning("GEMINI_API_KEY not set; LLM disabled")
         _model_unavailable = True
         return None
 

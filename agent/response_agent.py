@@ -31,7 +31,7 @@ def _get_model(api_key: str, model_name: str = "gemini-flash-lite-latest"):
         return _model
 
     if not api_key:
-        logger.warning("GOOGLE_API_KEY not set — Gemini disabled")
+        logger.warning("GEMINI_API_KEY not set — Gemini disabled")
         _model_unavailable = True
         return None
 
@@ -98,7 +98,7 @@ def draft_response(
     Never raises — failures are handled gracefully.
     """
     if not api_key:
-        logger.warning("No GOOGLE_API_KEY set — returning placeholder")
+        logger.warning("No GEMINI_API_KEY set — returning placeholder")
         return "[GENERATION FAILED - no API key configured. Draft manually.]"
 
     model = _get_model(api_key, model_name)

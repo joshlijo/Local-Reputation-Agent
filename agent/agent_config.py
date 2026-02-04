@@ -3,6 +3,9 @@ Configuration for the agentic reputation management system.
 """
 
 import os
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.join(BASE_DIR, "..")
@@ -17,7 +20,7 @@ INPUT_CSV = os.path.join(PROJECT_ROOT, "tap-google-reviews", "reviews.csv")
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "Cafe Amudham")
 
 # Google Gemini API (for response drafting)
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
 
 # Scheduler

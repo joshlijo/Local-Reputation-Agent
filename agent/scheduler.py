@@ -47,7 +47,7 @@ from utils import load_reviews
 # -----------------------------------------------------------------------------
 # Config
 # -----------------------------------------------------------------------------
-MAX_DRAFTS_PER_RUN = 5  # cost / rate-limit guardrail
+MAX_DRAFTS_PER_RUN = int(os.getenv("MAX_DRAFTS_PER_RUN", "20"))  # cost / rate-limit guardrail
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
@@ -160,7 +160,7 @@ def run_cycle():
             review["rating"],
             review["reviewer_name"],
             agent_config.BUSINESS_NAME,
-            agent_config.GOOGLE_API_KEY,
+            agent_config.GEMINI_API_KEY,
             agent_config.GEMINI_MODEL,
         )
 

@@ -70,10 +70,10 @@ For AI-powered response drafting, set your Gemini API key:
 
 ```bash
 # Windows
-set GOOGLE_API_KEY=your-api-key-here
+set GEMINI_API_KEY=your-api-key-here
 
 # macOS/Linux
-export GOOGLE_API_KEY=your-api-key-here
+export GEMINI_API_KEY=your-api-key-here
 ```
 
 Other optional environment variables:
@@ -168,6 +168,6 @@ python convert_jsonl_to_csv.py
 
 ### AI responses not generating
 
-- Verify `GOOGLE_API_KEY` environment variable is set
+- Verify `GEMINI_API_KEY` environment variable is set
 - Check the Gemini API quota/limits
 - Responses are capped at 5 per run (configurable in `scheduler.py`)
