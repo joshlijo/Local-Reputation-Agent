@@ -148,15 +148,22 @@ def get_all_reviews():
     return [dict(row) for row in rows]
 
 
-def get_complaint_counts():
+def get_complaint_counts(since: str | None = None):
     """
-    Count negative aspect mentions across all negative reviews.
+    Count negative aspect mentions across negative reviews.
+    If `since` is provided (ISO 8601 string), only count reviews on or after that date.
     Returns list of (aspect, count) sorted by count descending.
     """
     conn = _connect()
-    rows = conn.execute(
-        "SELECT aspects FROM reviews WHERE rating <= 3"
-    ).fetchall()
+    if since:
+        rows = conn.execute(
+            "SELECT aspects FROM reviews WHERE rating <= 3 AND review_date >= ?",
+            (since,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT aspects FROM reviews WHERE rating <= 3"
+        ).fetchall()
     conn.close()
 
     counter = {}

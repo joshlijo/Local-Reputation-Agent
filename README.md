@@ -72,7 +72,7 @@ BUSINESS_NAME=Your Business Name
 ```
 
 Optional variables:
-- `GEMINI_MODEL` — Model to use (default: `gemini-flash-lite-latest`)
+- `GEMINI_MODEL` — Model to use (default: `gemini-2.0-flash`)
 - `SCHEDULE_HOURS` — Hours between scheduled runs (default: `6`)
 - `MAX_DRAFTS_PER_RUN` — Max AI responses per cycle (default: `5`)
 
@@ -105,7 +105,7 @@ streamlit run agent/app.py
 ```
 
 Open http://localhost:8501 to view:
-- **Pulse tab** — Reputation score, sentiment breakdown, top complaints, recent negative reviews
+- **Pulse tab** — Reputation score, sentiment breakdown, top complaints this week, recent negative reviews
 - **Review Queue tab** — AI-drafted responses pending human approval/editing
 
 ### 6. Continuous monitoring
@@ -133,7 +133,7 @@ Local Reputation Agent/
 │   ├── scheduler.py              # Orchestrator — runs tap + sentiment + drafting
 │   ├── app.py                    # Streamlit dashboard (Pulse + Review Queue)
 │   ├── db.py                     # SQLite persistence (reviews + response queue)
-│   ├── response_agent.py         # AI response drafting via Gemini
+│   ├── response_agent.py         # AI response drafting via Google ADK + Gemini
 │   └── agent_config.py           # Environment and config loading
 ├── tap-google-reviews/           # Google Maps review scraper
 │   ├── tap_google_reviews/       # Singer SDK tap implementation

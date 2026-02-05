@@ -70,9 +70,10 @@ with tab_pulse:
         col3.metric("Positive", pos)
         col4.metric("Negative", neg)
 
-        # --- Top 3 Complaints ---
-        st.subheader("Top Complaints")
-        complaints = get_complaint_counts()
+        # --- Top 3 Complaints This Week ---
+        st.subheader("Top Complaints This Week")
+        week_ago = (now - timedelta(days=7)).isoformat()
+        complaints = get_complaint_counts(since=week_ago)
         if complaints:
             for aspect, count in complaints[:3]:
                 st.write(f"**{aspect.capitalize()}** — {count} negative mentions")

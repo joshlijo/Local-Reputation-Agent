@@ -1,5 +1,6 @@
 # Web scraping (tap-google-reviews)
 playwright>=1.40
+playwright-stealth==1.0.6
 python-dateutil>=2.8
 
 # Singer SDK (tap-google-reviews)
@@ -8,10 +9,10 @@ singer-sdk>=0.34
 # Sentiment analysis
 vaderSentiment>=3.3.2
 
-# LLM integrations
-huggingface-hub>=0.20
-google-generativeai>=0.4
+# LLM integrations (Google ADK + Gemini)
+google-adk>=1.0
 
 # Agent UI & scheduling
 streamlit>=1.30
 schedule>=1.2
+python-dotenv>=1.0
