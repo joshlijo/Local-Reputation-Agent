@@ -35,6 +35,11 @@ reviews.csv
 # =========================
 debug_no_reviews.png
 debug_before_click.png
+search_box_not_found.png
+search_input_not_found.png
+diag_google_home.png
+diag_maps_page.png
+maps_shell_not_loaded.png
 *.log
 test.py
 

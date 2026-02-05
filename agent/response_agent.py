@@ -15,24 +15,19 @@ logger = logging.getLogger("agent.response")
 
 # Module-level model instance (lazy initialization)
 _model = None
-_model_unavailable = False
 
 
 def _get_model(api_key: str, model_name: str = "gemini-flash-lite-latest"):
     """
     Lazy-initialize the Gemini model.
     """
-    global _model, _model_unavailable
-
-    if _model_unavailable:
-        return None
+    global _model
 
     if _model is not None:
         return _model
 
     if not api_key:
         logger.warning("GEMINI_API_KEY not set — Gemini disabled")
-        _model_unavailable = True
         return None
 
     try:
@@ -48,7 +43,6 @@ def _get_model(api_key: str, model_name: str = "gemini-flash-lite-latest"):
         return _model
     except Exception as e:
         logger.error("Failed to initialize Gemini: %s", e)
-        _model_unavailable = True
         return None
 
 
@@ -90,20 +84,23 @@ def draft_response(
     api_key: str,
     model_name: str = "gemini-flash-lite-latest",
     max_retries: int = 3,
-) -> str:
+) -> tuple[str, bool, bool]:
     """
     Generate a draft response to a negative review using Google Gemini.
 
-    Returns the draft text, or a failure placeholder if the LLM call fails.
+    Returns (text, success, quota_exhausted):
+      - success=True: text is a real AI draft
+      - success=False, quota_exhausted=True: API quota hit, caller should stop
+      - success=False, quota_exhausted=False: transient failure for this review
     Never raises — failures are handled gracefully.
     """
     if not api_key:
         logger.warning("No GEMINI_API_KEY set — returning placeholder")
-        return "[GENERATION FAILED - no API key configured. Draft manually.]"
+        return "[GENERATION FAILED - no API key configured. Draft manually.]", False, False
 
     model = _get_model(api_key, model_name)
     if model is None:
-        return "[GENERATION FAILED - Gemini unavailable. Draft manually.]"
+        return "[GENERATION FAILED - Gemini unavailable. Draft manually.]", False, False
 
     prompt = _build_prompt(
         review_text=review_text,
@@ -120,7 +117,7 @@ def draft_response(
             # Check for blocked content
             if not result.candidates:
                 logger.warning("Gemini returned no candidates (possibly blocked)")
-                return "[GENERATION FAILED - content blocked. Draft manually.]"
+                return "[GENERATION FAILED - content blocked. Draft manually.]", False, False
 
             text = result.text.strip()
 
@@ -130,21 +127,20 @@ def draft_response(
                     "Response too short (%d words), using placeholder",
                     word_count,
                 )
-                return "[GENERATION FAILED - response too short. Draft manually.]"
+                return "[GENERATION FAILED - response too short. Draft manually.]", False, False
 
             if word_count > 200:
                 text = " ".join(text.split()[:150])
 
-            return text
+            return text, True, False
 
         except Exception as e:
             error_str = str(e).lower()
 
-            # Check for quota exhaustion
+            # Check for quota exhaustion — signal caller to stop
             if "quota" in error_str or "429" in error_str or "resource_exhausted" in error_str:
-                global _model_unavailable
-                _model_unavailable = True
-                return "[GENERATION FAILED - API quota exhausted. Draft manually.]"
+                logger.warning("Gemini API quota exhausted: %s", e)
+                return "[GENERATION FAILED - API quota exhausted. Draft manually.]", False, True
 
             # Retry for transient errors
             if attempt < max_retries - 1:
@@ -159,6 +155,6 @@ def draft_response(
                 time.sleep(wait_time)
             else:
                 logger.error("Gemini API error after %d attempts: %s", max_retries, e)
-                return f"[GENERATION FAILED - {type(e).__name__}. Draft manually.]"
+                return f"[GENERATION FAILED - {type(e).__name__}. Draft manually.]", False, False
 
-    return "[GENERATION FAILED - max retries exceeded. Draft manually.]"
+    return "[GENERATION FAILED - max retries exceeded. Draft manually.]", False, False

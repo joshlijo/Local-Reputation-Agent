@@ -47,7 +47,7 @@ from utils import load_reviews
 # -----------------------------------------------------------------------------
 # Config
 # -----------------------------------------------------------------------------
-MAX_DRAFTS_PER_RUN = int(os.getenv("MAX_DRAFTS_PER_RUN", "20"))  # cost / rate-limit guardrail
+MAX_DRAFTS_PER_RUN = int(os.getenv("MAX_DRAFTS_PER_RUN", "5"))  # cost / rate-limit guardrail
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
@@ -149,13 +149,17 @@ def run_cycle():
     # -------------------------------------------------------------------------
     # 4. Draft responses (URGENT first, capped)
     # -------------------------------------------------------------------------
+    all_negatives = urgent_queue + normal_negative_queue
     drafted = 0
+    failed = 0
+    attempted = 0
+    quota_hit = False
 
-    for review in urgent_queue + normal_negative_queue:
-        if drafted >= MAX_DRAFTS_PER_RUN:
+    for review in all_negatives:
+        if drafted >= MAX_DRAFTS_PER_RUN or quota_hit:
             break
 
-        draft = draft_response(
+        text, success, quota_exhausted = draft_response(
             review["review_text"],
             review["rating"],
             review["reviewer_name"],
@@ -164,23 +168,29 @@ def run_cycle():
             agent_config.GEMINI_MODEL,
         )
 
-        insert_response(review["review_id"], draft)
-        drafted += 1
+        insert_response(review["review_id"], text)
+        attempted += 1
 
-    # Add placeholders for skipped negatives
-    skipped = urgent_queue + normal_negative_queue
-    for review in skipped[drafted:]:
+        if success:
+            drafted += 1
+        else:
+            failed += 1
+            if quota_exhausted:
+                quota_hit = True
+                logger.warning("API quota exhausted — stopping draft generation")
+
+    # Add placeholders for remaining negatives
+    for review in all_negatives[attempted:]:
         insert_response(
             review["review_id"],
             "[AI draft skipped due to rate limit — please draft manually.]",
         )
 
-
-
     logger.info(
-        "Cycle complete: %d reviews processed, %d AI responses drafted (cap=%d)",
+        "Cycle complete: %d reviews processed, %d AI responses drafted, %d failed (cap=%d)",
         len(new_reviews),
         drafted,
+        failed,
         MAX_DRAFTS_PER_RUN,
     )
 
