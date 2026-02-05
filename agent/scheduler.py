@@ -16,6 +16,7 @@ Usage:
 import argparse
 import logging
 import os
+import subprocess
 import sys
 import time
 
@@ -57,9 +58,48 @@ logging.basicConfig(
 logger = logging.getLogger("agent.scheduler")
 
 
+def run_tap():
+    """Run the Google Reviews tap to fetch fresh review data."""
+    tap_dir = os.path.join(PROJECT_ROOT, "tap-google-reviews")
+    jsonl_path = os.path.join(tap_dir, "output.jsonl")
+
+    logger.info("Running tap-google-reviews scraper...")
+    with open(jsonl_path, "w") as out:
+        result = subprocess.run(
+            [sys.executable, "-m", "tap_google_reviews.tap", "--config", "config.json"],
+            cwd=tap_dir,
+            stdout=out,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    if result.returncode != 0:
+        logger.error("Tap failed: %s", result.stderr)
+        return False
+
+    logger.info("Converting JSONL to CSV...")
+    result = subprocess.run(
+        [sys.executable, "convert_jsonl_to_csv.py"],
+        cwd=tap_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        logger.error("JSONL-to-CSV conversion failed: %s", result.stderr)
+        return False
+
+    logger.info("Tap pipeline complete")
+    return True
+
+
 def run_cycle():
     """Execute one full processing cycle."""
     logger.info("Starting processing cycle")
+
+    # -------------------------------------------------------------------------
+    # 0. Scrape fresh reviews
+    # -------------------------------------------------------------------------
+    if not run_tap():
+        logger.warning("Tap failed — falling back to existing CSV (if any)")
 
     # -------------------------------------------------------------------------
     # 1. Load reviews
@@ -68,13 +108,7 @@ def run_cycle():
         reviews = load_reviews(agent_config.INPUT_CSV)
     except FileNotFoundError:
         logger.error("Input CSV not found: %s", agent_config.INPUT_CSV)
-        logger.info("")
-        logger.info("To generate reviews.csv, run the scraper pipeline:")
-        logger.info("  1. cd tap-google-reviews")
-        logger.info("  2. python -m tap_google_reviews.tap --config config.json > output.jsonl")
-        logger.info("  3. python convert_jsonl_to_csv.py")
-        logger.info("")
-        logger.info("Then re-run this scheduler.")
+        logger.info("The tap may have failed to produce output. Check logs above.")
         return
 
     logger.info("Loaded %d reviews from CSV", len(reviews))
