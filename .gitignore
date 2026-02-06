@@ -27,8 +27,6 @@ htmlcov/
 # =========================
 output.json
 output2.jsonl
-output.jsonl
-reviews.csv
 
 # =========================
 # Local / Debug Files

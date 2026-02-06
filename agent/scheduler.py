@@ -166,12 +166,12 @@ def run_cycle():
         record = enforce_contract(record)
         insert_review(record)
 
-        # Queue for drafting later
+        # Queue for drafting later (keep record for structured context)
         if rating <= agent_config.NEGATIVE_RATING_MAX:
             if record["urgent"]:
-                urgent_queue.append(review)
+                urgent_queue.append((review, record))
             else:
-                normal_negative_queue.append(review)
+                normal_negative_queue.append((review, record))
 
         if (i + 1) % 25 == 0:
             logger.info(
@@ -189,9 +189,24 @@ def run_cycle():
     attempted = 0
     quota_hit = False
 
-    for review in all_negatives:
+    for review, record in all_negatives:
         if drafted >= MAX_DRAFTS_PER_RUN or quota_hit:
             break
+
+        # Extract aspect sentiments as simple dict for the response agent
+        aspects = {}
+        if record.get("aspect_sentiments"):
+            for aspect, info in record["aspect_sentiments"].items():
+                if isinstance(info, dict):
+                    aspects[aspect] = info.get("sentiment", "neutral")
+                else:
+                    aspects[aspect] = str(info)
+
+        urgency_info = {
+            "reason": record.get("urgency_reason", "none"),
+            "severity": record.get("severity_score", 0),
+            "patterns": record.get("matched_patterns", []),
+        }
 
         text, success, quota_exhausted = draft_response(
             review["review_text"],
@@ -200,6 +215,8 @@ def run_cycle():
             agent_config.BUSINESS_NAME,
             agent_config.GEMINI_API_KEY,
             agent_config.GEMINI_MODEL,
+            aspects=aspects,
+            urgency_info=urgency_info,
         )
 
         insert_response(review["review_id"], text)
@@ -207,6 +224,8 @@ def run_cycle():
 
         if success:
             drafted += 1
+            # Rate-limit delay: free-tier Gemini caps at ~15 RPM
+            time.sleep(4)
         else:
             failed += 1
             if quota_exhausted:
@@ -214,7 +233,7 @@ def run_cycle():
                 logger.warning("API quota exhausted — stopping draft generation")
 
     # Add placeholders for remaining negatives
-    for review in all_negatives[attempted:]:
+    for review, record in all_negatives[attempted:]:
         insert_response(
             review["review_id"],
             "[AI draft skipped due to rate limit — please draft manually.]",

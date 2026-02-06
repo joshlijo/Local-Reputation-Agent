@@ -21,7 +21,7 @@ BUSINESS_NAME = os.getenv("BUSINESS_NAME", "Cafe Amudham")
 
 # Google Gemini API (for response drafting)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
 # Scheduler
 SCHEDULE_HOURS = int(os.getenv("SCHEDULE_HOURS", "6"))

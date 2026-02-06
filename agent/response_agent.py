@@ -23,18 +23,87 @@ _session_service = None
 
 PERSONA = """You are a senior reputation manager for {business_name}.
 
-CONSTRAINTS:
-- Respond with empathy and professionalism
-- NEVER admit legal liability or fault
-- NEVER argue with the reviewer
-- Always thank the reviewer for their feedback
-- Invite them to continue the conversation privately via email or phone
-- Do NOT offer refunds, discounts, or free items
-- Do NOT make specific promises
-- Write in plain text only, no markdown, no emojis
-- Response must be 50-100 words
+VOICE:
+- Write like a real person, not a corporate template
+- Reference specific details the reviewer mentioned (a dish, a date, a staff member, their situation)
+- Vary your opening — NEVER start with "Dear [Name], thank you for taking the time..."
+- Match your emotional register to the complaint severity
 
-Write a single professional response paragraph."""
+HARD RULES:
+- NEVER admit legal liability or fault
+- NEVER offer refunds, discounts, or free items
+- NEVER argue with the reviewer
+- Always invite them to continue privately (email or phone)
+- Plain text only, no markdown, no emojis
+- 50-100 words
+
+You will receive a COMPLAINT ANALYSIS block with the detected complaint type, \
+affected aspects, and specific concerns. Use this to tailor your response — \
+a food poisoning complaint demands a different tone than a slow-service complaint."""
+
+# Complaint-type-specific guidance injected into the user message
+COMPLAINT_GUIDANCE = {
+    "food_poisoning": (
+        "- Express genuine concern for their health and recovery\n"
+        "- Mention that food safety standards are being reviewed internally\n"
+        "- Do NOT minimize or question their experience"
+    ),
+    "hygiene_severe": (
+        "- Acknowledge the specific hygiene issue they described\n"
+        "- Show that cleanliness standards matter to you\n"
+        "- Do NOT make generic 'we take hygiene seriously' claims without specificity"
+    ),
+    "rude_staff": (
+        "- Acknowledge that the staff conduct they described is unacceptable\n"
+        "- Reference the specific interaction they mentioned\n"
+        "- Do NOT make excuses for the staff"
+    ),
+    "authority_escalation": (
+        "- Take the regulatory concern seriously — do not dismiss it\n"
+        "- Show willingness to address the specific compliance issue raised\n"
+        "- This reviewer is considering legal/regulatory action — urgency matters"
+    ),
+    "safety_concern": (
+        "- Acknowledge the specific safety hazard they reported\n"
+        "- Show that patron safety is being addressed\n"
+        "- Do NOT dismiss or minimize the physical risk they described"
+    ),
+    "none": (
+        "- Address the specific complaint they raised\n"
+        "- Reference a concrete detail from their review"
+    ),
+}
+
+
+def _build_context(review_text, rating, reviewer_name, aspects, urgency_info):
+    """Build structured context block for the LLM instead of raw text dump."""
+    lines = []
+
+    reason = urgency_info.get("reason", "none") if urgency_info else "none"
+    severity = urgency_info.get("severity", 0) if urgency_info else 0
+    patterns = urgency_info.get("patterns", []) if urgency_info else []
+
+    if reason != "none":
+        label = reason.replace("_", " ").title()
+        lines.append(f"COMPLAINT TYPE: {label} (Severity: {severity}/10)")
+
+    if aspects:
+        neg_aspects = [a for a, s in aspects.items() if s == "negative"]
+        if neg_aspects:
+            lines.append(f"NEGATIVE ASPECTS: {', '.join(neg_aspects)}")
+
+    if patterns:
+        lines.append(f"KEY CONCERNS: {', '.join(patterns)}")
+
+    lines.append("")
+    lines.append(f"Reviewer: {reviewer_name} | Rating: {rating}/5")
+    lines.append(f'Review: "{review_text}"')
+
+    lines.append("")
+    guidance = COMPLAINT_GUIDANCE.get(reason, COMPLAINT_GUIDANCE["none"])
+    lines.append(f"RESPONSE GUIDANCE:\n{guidance}")
+
+    return "\n".join(lines)
 
 
 def _get_runner(api_key: str, model_name: str, business_name: str):
@@ -68,6 +137,7 @@ def _get_runner(api_key: str, model_name: str, business_name: str):
             agent=agent,
             app_name="reputation-agent",
             session_service=_session_service,
+            auto_create_session=True,
         )
         logger.info("ADK agent initialized: %s", model_name)
         return _runner
@@ -83,10 +153,16 @@ def draft_response(
     business_name: str,
     api_key: str,
     model_name: str = "gemini-2.0-flash",
+    aspects: dict = None,
+    urgency_info: dict = None,
     max_retries: int = 3,
 ) -> tuple[str, bool, bool]:
     """
     Generate a draft response to a negative review using Google ADK.
+
+    Args:
+      aspects: detected aspect sentiments, e.g. {"food": "negative", "hygiene": "negative"}
+      urgency_info: urgency details, e.g. {"reason": "food_poisoning", "severity": 10, "patterns": [...]}
 
     Returns (text, success, quota_exhausted):
       - success=True: text is a real AI draft
@@ -102,11 +178,7 @@ def draft_response(
     if runner is None:
         return "[GENERATION FAILED - ADK agent unavailable. Draft manually.]", False, False
 
-    user_message = (
-        f"Reviewer: {reviewer_name}\n"
-        f"Rating: {rating}/5 stars\n"
-        f"Review: {review_text}"
-    )
+    user_message = _build_context(review_text, rating, reviewer_name, aspects, urgency_info)
 
     for attempt in range(max_retries):
         try:
@@ -135,13 +207,21 @@ def draft_response(
                     error_str = event.error_message.lower()
                     if "quota" in error_str or "429" in error_str or "resource_exhausted" in error_str:
                         logger.warning("Gemini API quota exhausted: %s", event.error_message)
-                        return "[GENERATION FAILED - API quota exhausted. Draft manually.]", False, True
+                        return "[AI drafting paused, daily Gemini quota exhausted. Resume automatically on next run. Draft manually.]", False, True
                     raise RuntimeError(event.error_message)
 
             text = response_text.strip()
+
+            # Strip ADK agent name prefix (e.g. "response_agent:\n\n")
+            if text.lower().startswith("response_agent:"):
+                text = text[len("response_agent:"):].strip()
+
             if not text:
-                logger.warning("ADK agent returned empty response")
-                return "[GENERATION FAILED - empty response. Draft manually.]", False, False
+                # ADK swallows 429 errors in background threads, resulting in
+                # empty responses instead of proper error propagation. Treat
+                # empty responses as likely quota exhaustion so the caller stops.
+                logger.warning("ADK agent returned empty response (likely 429 quota error)")
+                return "[GENERATION FAILED - empty response. Draft manually.]", False, True
 
             word_count = len(text.split())
             if word_count < 20:

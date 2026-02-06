@@ -78,17 +78,23 @@ Optional variables:
 
 ### 3. Configure the scraper
 
-Edit `tap-google-reviews/config.json`:
+```bash
+cp tap-google-reviews/config.json.example tap-google-reviews/config.json
+```
+
+Then edit `tap-google-reviews/config.json` with your business URL:
 
 ```json
 {
-  "place_query": "Your Business Name City",
+  "google_maps_url": "https://maps.app.goo.gl/YOUR_BUSINESS_LINK",
   "headless": true,
   "max_pages": 100,
   "rate_limit_seconds": 1.5,
   "initial_full_scrape": true
 }
 ```
+
+To get the URL: open Google Maps, find your business, click **Share**, and copy the link.
 
 ### 4. Run the full pipeline (one-shot)
 
@@ -155,7 +161,7 @@ Local Reputation Agent/
 
 ### Scraper returns zero reviews
 
-- Check that `config.json` has the correct `place_query` for your business
+- Check that `config.json` has the correct `google_maps_url` for your business
 - Try setting `"headless": false` to debug visually
 - Google Maps may serve reduced UI to automated browsers; see stealth notes in the codebase
 

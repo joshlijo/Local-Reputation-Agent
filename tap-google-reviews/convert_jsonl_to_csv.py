@@ -31,7 +31,7 @@ def jsonl_to_csv(input_path: str, output_path: str):
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"Converted {len(rows)} records → {output_path}")
+    print(f"Converted {len(rows)} records -> {output_path}")
 
 
 if __name__ == "__main__":
