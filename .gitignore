@@ -43,6 +43,7 @@ debug_trust_gate_failed.png
 *.log
 test.py
 reviews.csv
+sentiment_results.csv
 
 # =========================
 # OS / Editor Noise

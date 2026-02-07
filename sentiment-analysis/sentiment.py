@@ -61,13 +61,24 @@ _NEGATION_WORDS = frozenset({
 # Used to detect long-form complaint reviews where VADER's bag-of-words
 # approach sums neutral/positive words to a misleadingly high score.
 _NEGATIVE_KEYWORDS = frozenset({
-    "average", "okay", "ok", "decent", "delay", "waiting", "poor", "bad", 
+    "average", "okay", "ok", "decent", "delay", "waiting", "poor", "bad",
     "worst", "terrible", "horrible", "awful", "pathetic",
     "disgusting", "rude", "dirty", "filthy", "overpriced", "expensive",
     "slow", "declined", "decreased", "issue", "issues", "problem",
     "complaint", "concern", "unhygienic", "stained", "poisoning",
     "sick", "sickness", "shame", "avoid", "worst", "careless",
     "disrespectful", "mannerless", "shouting", "shout",
+})
+
+# Words that are inherently negative.  When preceded by negation
+# ("not disappointed", "not bad"), the result is a double negative = positive.
+# Guardrails must NOT flip VADER's positive score in these cases.
+_DOUBLE_NEGATIVE_WORDS = frozenset({
+    "disappointed", "disappoint", "disappointing", "dissatisfied",
+    "bad", "worse", "worst", "terrible", "horrible", "awful",
+    "pathetic", "disgusting", "poor", "rude", "dirty", "filthy",
+    "unhappy", "unpleasant", "uncomfortable", "unsatisfied",
+    "regret", "regretted", "complain", "complained",
 })
 
 # Threshold for "long complaint" detection.
@@ -157,6 +168,26 @@ def classify_sentiment(review_text: str, rating: int) -> dict:
     }
 
 
+def _has_double_negative(text: str) -> bool:
+    """
+    Check if text contains a double negative (negation + inherently negative word).
+
+    E.g., "not disappointed" → True, "not good" → False.
+    Returns True only if a negation word appears within 3 words before
+    an inherently negative word, creating a positive meaning.
+    """
+    # Use re.findall to extract clean words (strips punctuation like periods,
+    # commas) — "disappointed." becomes "disappointed".
+    words = re.findall(r"\w+", text.lower())
+    for i, word in enumerate(words):
+        if word in _DOUBLE_NEGATIVE_WORDS:
+            # Window of 3 to catch patterns like "not at all disappointed"
+            window = words[max(0, i - 3):i]
+            if any(w in _NEGATION_WORDS for w in window):
+                return True
+    return False
+
+
 def _apply_vader_guardrails(score: float, text: str, rating: int) -> float:
     """
     Clamp or override VADER score when known failure modes are detected.
@@ -170,24 +201,32 @@ def _apply_vader_guardrails(score: float, text: str, rating: int) -> float:
     has_negation = bool(_NEGATION_WORDS.intersection(words))
     has_negative_kw = bool(_NEGATIVE_KEYWORDS.intersection(words))
     is_long = len(text) > _LONG_REVIEW_THRESHOLD
+    is_double_neg = _has_double_negative(text_lower)
 
     # Guardrail 1: Negation with positive VADER.
     # If negation words are present AND VADER scored positive AND the
     # review has negative keywords, the positive score is almost certainly
     # wrong.  Flip it.
-    # Example: "do not expect food, hygiene, or service to actually exist"
-    #   VADER: +0.89 (wrong), after flip: -0.89 (correct)
+    # EXCEPTIONS:
+    #   - Double negatives ("not disappointed") where positive is correct.
+    #   - Rating 4-5: reviewer is genuinely happy.  The guardrail was
+    #     designed for deceptive-positive text where VADER is wrong, and
+    #     those reviewers give low ratings.  For high ratings, trust VADER.
+    #     This prevents "No stomach issues" + "concern" in separate
+    #     sentences from flipping a genuinely positive 5-star review.
     if score > 0 and has_negation and has_negative_kw:
-        score = -abs(score)
+        if not is_double_neg and rating <= 3:
+            score = -abs(score)
 
     # Guardrail 2: Long complaint reviews.
     # Reviews > 250 chars with negative keywords but positive VADER are
     # typically detailed complaints where VADER's bag-of-words approach
     # accumulates incidental positive words ("good", "expect", "best")
     # that appear in a negative context.
-    # Clamp to at most mildly negative.
+    # Same exceptions as Guardrail 1.
     if score > 0 and is_long and has_negative_kw:
-        score = min(score, -0.1)
+        if not is_double_neg and rating <= 3:
+            score = min(score, -0.1)
 
     # Guardrail 3: Low rating contradiction.
     # If the reviewer gave 1-2 stars but VADER scored strongly positive

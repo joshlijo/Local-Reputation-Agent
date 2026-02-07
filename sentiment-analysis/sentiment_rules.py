@@ -112,14 +112,17 @@ def _enforce_aspect_sentiments(record: dict) -> None:
     aspect_sentiments = record.get("aspect_sentiments", {})
     rating = record.get("rating", 5)
 
-    _COMPLAINT_INDICATORS = {
+    # Split indicators into single-word (use word-level matching to avoid
+    # substring false positives like "poor" matching "poori") and multi-word
+    # (use substring matching since they won't have partial-match issues).
+    _COMPLAINT_SINGLE = {
         "poor", "bad", "worst", "terrible", "horrible", "dirty", "filthy",
         "rude", "slow", "concern", "issue", "issues", "problem", "unsafe",
         "improvement", "improve", "nonexistent", "stained", "flies",
         "cockroach", "unhygienic", "careless", "negligent", "shouting",
-        "disrespectful", "mannerless", "pathetic", "disgusting",
-        "not clean", "no railing", "negative",
+        "disrespectful", "mannerless", "pathetic", "disgusting", "negative",
     }
+    _COMPLAINT_MULTI = {"not clean", "no railing"}
 
     for aspect in ("hygiene", "safety", "service"):
         if aspect not in aspect_sentiments:
@@ -129,7 +132,11 @@ def _enforce_aspect_sentiments(record: dict) -> None:
         mentions = data.get("mentions", [])
 
         mentions_text = " ".join(mentions).lower()
-        has_complaint = any(ind in mentions_text for ind in _COMPLAINT_INDICATORS)
+        mentions_words = set(mentions_text.split())
+        has_complaint = (
+            bool(mentions_words.intersection(_COMPLAINT_SINGLE))
+            or any(phrase in mentions_text for phrase in _COMPLAINT_MULTI)
+        )
         low_rating = rating <= 2
 
         if data["sentiment"] in ("positive", "neutral") and (has_complaint or low_rating):

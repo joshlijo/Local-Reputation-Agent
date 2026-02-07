@@ -88,7 +88,7 @@ _NEGATION_SINGLES = frozenset({
 # "big" as positive.
 _NEGATIVE_INDICATORS = frozenset({
     "average", "okay", "ok", "decent", "delay", "delayed", "waiting",
-"poor", "bad", "worst", "terrible", "horrible", "awful", "pathetic",
+    "poor", "bad", "worst", "terrible", "horrible", "awful", "pathetic",
     "disgusting", "concern", "issue", "issues", "problem", "problems",
     "complaint", "dirty", "filthy", "stained", "flies", "cockroach",
     "rude", "shouting", "shout", "disrespectful", "mannerless",
@@ -96,6 +96,29 @@ _NEGATIVE_INDICATORS = frozenset({
     "improvement", "improve", "needs", "lacking", "nonexistent",
     "negative", "unhygienic", "unclean", "declined", "decreased",
     "overpriced", "expensive",
+})
+
+# Words that are inherently negative in meaning.  When preceded by negation
+# ("not disappointed", "not bad"), the result is positive — a double negative.
+# The negation-flip logic must NOT flip VADER's score in these cases.
+_DOUBLE_NEGATIVE_WORDS = frozenset({
+    "disappointed", "disappoint", "disappointing", "dissatisfied",
+    "bad", "worse", "worst", "terrible", "horrible", "awful",
+    "pathetic", "disgusting", "poor", "rude", "dirty", "filthy",
+    "unhappy", "unpleasant", "uncomfortable", "unsatisfied",
+    "regret", "regretted", "complain", "complained",
+})
+
+# Service-speed words: when a sentence mentions these AND a dish name but
+# NO food-quality words, the sentence is about service, not food quality.
+_SERVICE_SPEED_WORDS = frozenset({
+    "slow", "fast", "quick", "wait", "waiting", "waited",
+    "delay", "delayed", "supply", "minutes", "mins", "took", "takes",
+})
+_FOOD_QUALITY_WORDS = frozenset({
+    "taste", "tasty", "delicious", "bland", "spicy", "oily", "crispy",
+    "fresh", "stale", "undercooked", "overcooked", "flavor", "flavour",
+    "yummy", "amazing", "excellent", "fantastic", "good", "bad", "worst",
 })
 
 # Aspects where positive sentiment on a complaint sentence is forbidden.
@@ -138,13 +161,33 @@ def _sentence_has_negative_indicators(sentence: str) -> bool:
     return bool(_NEGATIVE_INDICATORS.intersection(words_in_sentence))
 
 
+def _has_double_negative(sentence: str) -> bool:
+    """
+    Check if a sentence contains a double negative (negation + negative word).
+
+    E.g., "not disappointed" → True, "not good" → False.
+    Returns True only if a negation word appears within 3 words before
+    an inherently negative word, creating a positive meaning.
+    """
+    # Use re.findall to extract clean words (strips punctuation like periods,
+    # commas) — "disappointed." becomes "disappointed".
+    words = re.findall(r"\w+", sentence.lower())
+    for i, word in enumerate(words):
+        if word in _DOUBLE_NEGATIVE_WORDS:
+            # Window of 3 to catch patterns like "not at all disappointed"
+            window = words[max(0, i - 3):i]
+            if any(w in _NEGATION_SINGLES for w in window):
+                return True
+    return False
+
+
 def _score_sentence(sentence: str, aspect: str) -> float:
     """
     Score a single sentence's sentiment for a given aspect.
 
     Applies three layers of correction on top of raw VADER:
     1. Negation flip: if VADER scored positive but negation words present,
-       flip the score.
+       flip the score — UNLESS it's a double negative (e.g., "not disappointed").
     2. Forbidden positive: if the aspect is complaint-sensitive and the
        sentence contains negative indicators, clamp to negative.
     3. Score floor: ensure that obvious complaint language never produces
@@ -158,10 +201,12 @@ def _score_sentence(sentence: str, aspect: str) -> float:
 
     # Layer 1: Negation flip.
     # If VADER scored positive (> 0) but the sentence has negation,
-    # the true sentiment is likely negative.  Flip the sign.
-    # Example: "do not expect hygiene" → VADER might see "expect" as positive.
+    # the true sentiment is likely negative — UNLESS this is a double
+    # negative ("not disappointed" = satisfied) where the positive score
+    # is actually correct.
     if compound > 0 and has_negation:
-        compound = -abs(compound)
+        if not _has_double_negative(sentence):
+            compound = -abs(compound)
 
     # Layer 2: Forbidden positive for complaint-sensitive aspects.
     # If the sentence contains explicit negative indicators AND the aspect
@@ -205,6 +250,22 @@ def detect_aspects(review_text: str) -> dict:
         for aspect, pattern in _ASPECT_PATTERNS.items():
             if pattern.search(sentence):
                 aspect_sentences.setdefault(aspect, []).append(sentence)
+
+    # --- Cross-aspect deconfliction ---
+    # When a sentence matches both "food" (via dish name) and "service"
+    # (via speed/wait keywords), and has no food-quality words, the sentence
+    # is about service speed, not food quality.  Remove it from food.
+    # Fixes: "supply is quite slow for Dosa" scoring under food aspect.
+    if "food" in aspect_sentences and "service" in aspect_sentences:
+        shared = [s for s in aspect_sentences["food"] if s in aspect_sentences["service"]]
+        for sent in shared:
+            words = set(sent.lower().split())
+            has_speed = bool(_SERVICE_SPEED_WORDS.intersection(words))
+            has_quality = bool(_FOOD_QUALITY_WORDS.intersection(words))
+            if has_speed and not has_quality:
+                aspect_sentences["food"].remove(sent)
+        if not aspect_sentences["food"]:
+            del aspect_sentences["food"]
 
     # Score each aspect with negation-aware, forbidden-outcome-safe scoring
     aspect_sentiments = {}

@@ -24,6 +24,37 @@ CRITICAL SAFETY RULE (added in refactor):
 import config
 
 
+# Negation words that negate urgency keywords when they appear
+# within 3 words before the keyword in the text.
+_NEGATION_PREFIXES = frozenset({
+    "no", "not", "never", "without", "neither", "none", "zero",
+})
+
+
+def _has_non_negated_match(keyword: str, text_lower: str) -> bool:
+    """
+    Check if a keyword appears at least once without being negated.
+
+    Scans all occurrences of the keyword. For each one, checks if any of the
+    3 preceding words are negation words. Returns True if at least one
+    occurrence is NOT negated.
+
+    This prevents false positives like "No stomach issues" matching
+    "stomach issues" as an urgency trigger.
+    """
+    start = 0
+    while True:
+        idx = text_lower.find(keyword, start)
+        if idx == -1:
+            return False
+        prefix = text_lower[max(0, idx - 40):idx].strip()
+        words = prefix.split()
+        recent = words[-3:] if words else []
+        if not any(w in _NEGATION_PREFIXES for w in recent):
+            return True  # This occurrence is not negated
+        start = idx + len(keyword)
+
+
 # Categories where severity must never be reduced, regardless of rating.
 # Rationale: a food poisoning mention in ANY context warrants investigation.
 # False positives (e.g. "No stomach issues!") are cheaper than false negatives
@@ -63,7 +94,7 @@ def detect_urgency(review_text: str, rating: int) -> dict:
     best_is_health_safety = False
 
     for category, cfg in config.URGENCY_PATTERNS.items():
-        matches = [kw for kw in cfg["keywords"] if kw in text_lower]
+        matches = [kw for kw in cfg["keywords"] if _has_non_negated_match(kw, text_lower)]
         if matches:
             all_matches.extend(matches)
             if cfg["severity"] > max_severity:

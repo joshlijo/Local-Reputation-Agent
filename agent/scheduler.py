@@ -14,6 +14,7 @@ Usage:
 """
 
 import argparse
+import csv
 import json
 import logging
 import os
@@ -40,7 +41,7 @@ import agent_config
 from db import (
     init_db, get_seen_ids, insert_review, insert_response,
     get_failed_draft_ids, update_response, get_review_by_id,
-    get_undrafted_negative_ids,
+    get_undrafted_negative_ids, get_all_reviews,
 )
 from response_agent import draft_response
 
@@ -305,6 +306,42 @@ def run_cycle():
         failed,
         MAX_DRAFTS_PER_RUN,
     )
+
+    export_sentiment_csv()
+
+
+def export_sentiment_csv():
+    """Export all reviews with sentiment analysis results to CSV."""
+    out_path = os.path.join(PROJECT_ROOT, "sentiment_results.csv")
+    reviews = get_all_reviews()
+    if not reviews:
+        logger.info("No reviews to export")
+        return
+
+    fieldnames = [
+        "reviewer_name", "rating", "review_date", "overall_sentiment",
+        "urgent", "severity_score", "aspects", "review_text",
+    ]
+
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for r in reviews:
+            # Parse aspects JSON into readable string
+            aspects_str = ""
+            try:
+                aspects = json.loads(r.get("aspects") or "{}")
+                aspects_str = ", ".join(
+                    f"{k}: {v.get('sentiment', '?')}" if isinstance(v, dict) else f"{k}: {v}"
+                    for k, v in aspects.items()
+                )
+            except (json.JSONDecodeError, TypeError):
+                pass
+            r["aspects"] = aspects_str
+            r["urgent"] = "Yes" if r.get("urgent") else "No"
+            writer.writerow(r)
+
+    logger.info("Sentiment results exported to %s (%d reviews)", out_path, len(reviews))
 
 
 def main():
