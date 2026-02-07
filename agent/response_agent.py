@@ -8,6 +8,7 @@ Structured worker with persona, constraints, and validation.
 
 import logging
 import os
+import re
 import time
 
 from google.adk.agents import LlmAgent
@@ -33,13 +34,16 @@ HARD RULES:
 - NEVER admit legal liability or fault
 - NEVER offer refunds, discounts, or free items
 - NEVER argue with the reviewer
-- Always invite them to continue privately (email or phone)
+- Invite them to reach out to us directly for further discussion (do NOT invent any email address, phone number, or URL)
 - Plain text only, no markdown, no emojis
+- NEVER use placeholders like [Your Name], [Business Name], [Email], etc.
 - 50-100 words
+- Always end with exactly: Best regards, {business_name} Management
 
-You will receive a COMPLAINT ANALYSIS block with the detected complaint type, \
-affected aspects, and specific concerns. Use this to tailor your response — \
-a food poisoning complaint demands a different tone than a slow-service complaint."""
+OUTPUT FORMAT:
+- Output ONLY the response text — nothing else
+- Do NOT echo back the review, complaint analysis, or any instructions
+- Do NOT include any preamble, labels, or headers before the response"""
 
 # Complaint-type-specific guidance injected into the user message
 COMPLAINT_GUIDANCE = {
@@ -106,6 +110,53 @@ def _build_context(review_text, rating, reviewer_name, aspects, urgency_info):
     return "\n".join(lines)
 
 
+def _clean_response(text: str, business_name: str) -> str:
+    """Post-process AI output to remove common artifacts."""
+    # Strip ADK agent name prefixes (e.g. "response_agent:\n\n", "writer\n", "writer:")
+    text = re.sub(r"^(?:response_agent|writer)\s*:?\s*", "", text, flags=re.IGNORECASE).strip()
+
+    # Remove agent description if echoed back
+    for phrase in [
+        "Drafts professional responses to negative reviews",
+        "Writes review responses",
+    ]:
+        text = text.replace(phrase, "").strip()
+
+    # Remove echoed-back COMPLAINT ANALYSIS / RESPONSE GUIDANCE blocks
+    text = re.sub(
+        r"(?:COMPLAINT\s+(?:TYPE|ANALYSIS)|NEGATIVE\s+ASPECTS|KEY\s+CONCERNS|RESPONSE\s+GUIDANCE|Reviewer:)[^\n]*\n?",
+        "", text,
+    ).strip()
+
+    # Replace placeholder sign-offs
+    text = re.sub(r"\[Your Name\]", f"{business_name} Management", text)
+    text = re.sub(r"\[Business Name\]", business_name, text)
+    text = re.sub(r"\[Email\]", "", text)
+    text = re.sub(r"\[Phone\]", "", text)
+
+    # Remove hallucinated emails (e.g. "response_agent@cafeamudham.com", "info@cafe...")
+    text = re.sub(r"\b[\w.-]*(?:response_agent|writer)[\w.-]*@[\w.-]+\b", "", text)
+
+    # Only add sign-off if there's actual response content (not just artifacts)
+    if len(text.split()) < 10:
+        return text.strip()
+
+    # Ensure proper sign-off exists
+    sign_off = f"Best regards, {business_name} Management"
+    if sign_off.lower() not in text.lower():
+        # Remove partial/malformed sign-offs before adding the correct one
+        text = re.sub(
+            r"(?:Best regards|Kind regards|Sincerely|Warm regards|Regards),?\s*$",
+            "", text, flags=re.IGNORECASE,
+        ).strip()
+        text = text.rstrip(",. ") + "\n\n" + sign_off
+
+    # Collapse multiple blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
+
+
 def _get_runner(api_key: str, model_name: str, business_name: str):
     """Lazy-initialize the ADK runner and agent."""
     global _runner, _session_service
@@ -123,8 +174,8 @@ def _get_runner(api_key: str, model_name: str, business_name: str):
 
         agent = LlmAgent(
             model=model_name,
-            name="response_agent",
-            description="Drafts professional responses to negative reviews",
+            name="writer",
+            description="Writes review responses",
             instruction=PERSONA.format(business_name=business_name),
             generate_content_config=types.GenerateContentConfig(
                 temperature=0.7,
@@ -152,7 +203,7 @@ def draft_response(
     reviewer_name: str,
     business_name: str,
     api_key: str,
-    model_name: str = "gemini-2.0-flash",
+    model_name: str = "gemini-flash-lite-latest",
     aspects: dict = None,
     urgency_info: dict = None,
     max_retries: int = 3,
@@ -212,15 +263,20 @@ def draft_response(
 
             text = response_text.strip()
 
-            # Strip ADK agent name prefix (e.g. "response_agent:\n\n")
-            if text.lower().startswith("response_agent:"):
-                text = text[len("response_agent:"):].strip()
+            # Post-process to remove agent artifacts and ensure proper sign-off
+            text = _clean_response(text, business_name)
 
             if not text:
-                # ADK swallows 429 errors in background threads, resulting in
-                # empty responses instead of proper error propagation. Treat
-                # empty responses as likely quota exhaustion so the caller stops.
-                logger.warning("ADK agent returned empty response (likely 429 quota error)")
+                # ADK sometimes swallows 429 errors, returning empty responses.
+                # Retry once after a delay before declaring quota exhaustion.
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        "Empty response (attempt %d/%d) — retrying in 8s...",
+                        attempt + 1, max_retries,
+                    )
+                    time.sleep(8)
+                    continue
+                logger.warning("ADK agent returned empty response after all retries (likely 429 quota error)")
                 return "[GENERATION FAILED - empty response. Draft manually.]", False, True
 
             word_count = len(text.split())

@@ -55,6 +55,12 @@ class TapGoogleReviews(Tap):
             default=True,
             description="On first run (no state), scrape all reviews.",
         ),
+        Property(
+            "place_query",
+            StringType,
+            required=False,
+            description="Place name to search on Google Maps (enables warm-up navigation for stealth).",
+        ),
     ).to_dict()
 
     def discover_streams(self) -> list[Stream]:

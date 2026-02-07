@@ -52,8 +52,11 @@ class ReviewsStream(Stream):
             self.logger.info("No bookmark and initial_full_scrape=False — emitting nothing")
             return
 
+        place_query = self.config.get("place_query")
+
         scraper = GoogleReviewsScraper(
             google_maps_url=google_maps_url,
+            place_query=place_query,
             headless=headless,
             max_pages=max_pages,
             rate_limit_seconds=rate_limit_seconds,

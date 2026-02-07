@@ -140,6 +140,55 @@ def reject_response(queue_id: int):
     conn.close()
 
 
+def get_failed_draft_ids():
+    """Return set of review_ids with failed/placeholder draft responses."""
+    conn = _connect()
+    rows = conn.execute(
+        """SELECT review_id FROM response_queue
+           WHERE draft_response LIKE '[AI draft skipped%'
+              OR draft_response LIKE '[GENERATION FAILED%'
+              OR draft_response LIKE '[AI drafting paused%'"""
+    ).fetchall()
+    conn.close()
+    return {row["review_id"] for row in rows}
+
+
+def update_response(review_id: str, draft: str):
+    """Overwrite a previously failed draft with a new one."""
+    conn = _connect()
+    conn.execute(
+        """UPDATE response_queue
+           SET draft_response = ?, status = 'pending', created_at = ?
+           WHERE review_id = ?""",
+        (draft, datetime.now(timezone.utc).isoformat(), review_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_review_by_id(review_id: str):
+    """Return a single review record by ID, or None."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM reviews WHERE review_id = ?", (review_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_undrafted_negative_ids(max_rating: int = 3):
+    """Return review_ids of negative reviews with no response_queue entry at all."""
+    conn = _connect()
+    rows = conn.execute(
+        """SELECT r.review_id FROM reviews r
+           LEFT JOIN response_queue rq ON r.review_id = rq.review_id
+           WHERE r.rating <= ? AND rq.review_id IS NULL""",
+        (max_rating,),
+    ).fetchall()
+    conn.close()
+    return {row["review_id"] for row in rows}
+
+
 def get_all_reviews():
     """Return all reviews for analytics."""
     conn = _connect()

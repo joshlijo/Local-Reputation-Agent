@@ -72,7 +72,7 @@ BUSINESS_NAME=Your Business Name
 ```
 
 Optional variables:
-- `GEMINI_MODEL` — Model to use (default: `gemini-2.0-flash`)
+- `GEMINI_MODEL` — Model to use (default: `gemini-flash-lite-latest`)
 - `SCHEDULE_HOURS` — Hours between scheduled runs (default: `6`)
 - `MAX_DRAFTS_PER_RUN` — Max AI responses per cycle (default: `5`)
 

@@ -25,7 +25,7 @@ htmlcov/
 # =========================
 # Meltano / Singer Artifacts
 # =========================
-output.json
+output.jsonl
 output2.jsonl
 
 # =========================
@@ -38,8 +38,11 @@ search_input_not_found.png
 diag_google_home.png
 diag_maps_page.png
 maps_shell_not_loaded.png
+debug_maps_blank.png
+debug_trust_gate_failed.png
 *.log
 test.py
+reviews.csv
 
 # =========================
 # OS / Editor Noise

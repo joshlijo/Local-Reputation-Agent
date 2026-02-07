@@ -14,8 +14,10 @@ Usage:
 """
 
 import argparse
+import json
 import logging
 import os
+import random
 import subprocess
 import sys
 import time
@@ -35,7 +37,11 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, "sentiment-analysis"))
 import schedule
 
 import agent_config
-from db import init_db, get_seen_ids, insert_review, insert_response
+from db import (
+    init_db, get_seen_ids, insert_review, insert_response,
+    get_failed_draft_ids, update_response, get_review_by_id,
+    get_undrafted_negative_ids,
+)
 from response_agent import draft_response
 
 # Sentiment pipeline
@@ -125,15 +131,15 @@ def run_cycle():
         len(seen),
     )
 
-    if not new_reviews:
-        logger.info("No new reviews — cycle complete")
-        return
-
     # -------------------------------------------------------------------------
     # 3. Process each new review (collect first, draft later)
     # -------------------------------------------------------------------------
     urgent_queue = []
     normal_negative_queue = []
+
+    if not new_reviews:
+        logger.info("No new reviews to process")
+
 
     for i, review in enumerate(new_reviews):
         text = review["review_text"]
@@ -181,9 +187,38 @@ def run_cycle():
             )
 
     # -------------------------------------------------------------------------
-    # 4. Draft responses (URGENT first, capped)
+    # 4. Re-queue previously failed drafts + undrafted negatives
     # -------------------------------------------------------------------------
-    all_negatives = urgent_queue + normal_negative_queue
+    failed_ids = get_failed_draft_ids()
+    undrafted_ids = get_undrafted_negative_ids(agent_config.NEGATIVE_RATING_MAX)
+    backlog_ids = failed_ids | undrafted_ids
+    retry_queue = []
+    if backlog_ids:
+        logger.info(
+            "Found %d reviews needing drafts (%d failed, %d undrafted)",
+            len(backlog_ids), len(failed_ids), len(undrafted_ids),
+        )
+        for rid in backlog_ids:
+            review_row = get_review_by_id(rid)
+            if review_row:
+                aspects_raw = {}
+                try:
+                    aspects_raw = json.loads(review_row.get("aspects", "{}") or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                record = {
+                    "aspect_sentiments": aspects_raw,
+                    "urgency_reason": "none",
+                    "severity_score": review_row.get("severity_score", 0),
+                    "matched_patterns": [],
+                    "urgent": bool(review_row.get("urgent", 0)),
+                }
+                retry_queue.append((review_row, record))
+
+    # -------------------------------------------------------------------------
+    # 5. Draft responses (URGENT first, then normal, then retries — capped)
+    # -------------------------------------------------------------------------
+    all_negatives = urgent_queue + normal_negative_queue + retry_queue
     drafted = 0
     failed = 0
     attempted = 0
@@ -192,6 +227,12 @@ def run_cycle():
     for review, record in all_negatives:
         if drafted >= MAX_DRAFTS_PER_RUN or quota_hit:
             break
+
+        # Pre-call delay to stay under free-tier RPM limit (~5 RPM for 2.0-flash)
+        if attempted > 0:
+            delay = random.uniform(10, 15)
+            logger.info("Rate-limit delay: %.1fs before next API call", delay)
+            time.sleep(delay)
 
         # Extract aspect sentiments as simple dict for the response agent
         aspects = {}
@@ -219,25 +260,43 @@ def run_cycle():
             urgency_info=urgency_info,
         )
 
-        insert_response(review["review_id"], text)
+        is_retry = review["review_id"] in failed_ids
+        if is_retry:
+            update_response(review["review_id"], text)
+        else:
+            insert_response(review["review_id"], text)
         attempted += 1
 
         if success:
             drafted += 1
-            # Rate-limit delay: free-tier Gemini caps at ~15 RPM
-            time.sleep(4)
         else:
             failed += 1
             if quota_exhausted:
-                quota_hit = True
-                logger.warning("API quota exhausted — stopping draft generation")
+                # Wait and retry once before giving up entirely
+                logger.warning("Quota signal received — waiting 60s before retry...")
+                time.sleep(60)
+                text2, success2, still_exhausted = draft_response(
+                    review["review_text"],
+                    review["rating"],
+                    review["reviewer_name"],
+                    agent_config.BUSINESS_NAME,
+                    agent_config.GEMINI_API_KEY,
+                    agent_config.GEMINI_MODEL,
+                    aspects=aspects,
+                    urgency_info=urgency_info,
+                )
+                if success2:
+                    if is_retry:
+                        update_response(review["review_id"], text2)
+                    else:
+                        update_response(review["review_id"], text2)
+                    drafted += 1
+                    failed -= 1  # undo the earlier increment
+                else:
+                    quota_hit = True
+                    logger.warning("API quota confirmed exhausted — stopping draft generation")
 
-    # Add placeholders for remaining negatives
-    for review, record in all_negatives[attempted:]:
-        insert_response(
-            review["review_id"],
-            "[AI draft skipped due to rate limit — please draft manually.]",
-        )
+    # Note: un-attempted reviews are left without entries — next run picks them up
 
     logger.info(
         "Cycle complete: %d reviews processed, %d AI responses drafted, %d failed (cap=%d)",
