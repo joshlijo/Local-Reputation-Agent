@@ -51,7 +51,7 @@ Responses are **never auto-posted** to Google. Approved responses stay in the da
 ```bash
 git clone https://github.com/joshlijo/Local-Reputation-Agent.git
 ```
-Open this folder on your IDE.
+Open the Local-Reputation-Agent folder on your IDE.
 ```bash
 python -m venv .venv
 # Windows
