@@ -81,7 +81,7 @@ Optional variables:
 cp tap-google-reviews/config.json.example tap-google-reviews/config.json
 ```
 
-Then edit `tap-google-reviews/config.json` with your business URL:
+Then edit `tap-google-reviews/config.json` with your business URL and business name (with location, for ex: Cafe Amudham Sarjapur):
 
 ```json
 {
