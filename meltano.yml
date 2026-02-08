@@ -17,7 +17,7 @@ plugins:
       config:
         google_maps_url: https://maps.app.goo.gl/cGamxLRZ6VqMfCXB7
         place_query: Cafe Amudham Sarjapur
-        headless: true
+        headless: false
         max_pages: 100
         rate_limit_seconds: 1.5
         initial_full_scrape: true
