@@ -84,7 +84,7 @@ Windows (Command Prompt)
 ```bash
 copy tap-google-reviews\config.json.example tap-google-reviews\config.json
 ```
-Then edit `tap-google-reviews/config.json` with your business URL and business name (with location, for ex: Cafe Amudham Sarjapur):
+Then edit `tap-google-reviews/config.json` with your business URL and business name with location (for example: Cafe Amudham Sarjapur)
 
 ```json
 {
