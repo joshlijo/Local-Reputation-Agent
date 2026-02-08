@@ -5,36 +5,52 @@ An agentic reputation management system for local businesses. Automatically scra
 ## Architecture
 
 ```
-                        ┌─────────────────────┐
-                        │  scheduler.py       │
-                        │  (Heartbeat — 6h)   │
-                        └────────┬────────────┘
+                    ┌──────────────────────────┐
+                    │      scheduler.py        │
+                    │    (Heartbeat — 6h)      │
+                    └────────────┬─────────────┘
                                  │
-          ┌──────────────────────┼──────────────────────────┐
-          │                      │                          │
-          ▼                      ▼                          ▼
- ┌─────────────────┐   ┌─────────────────┐   ┌──────────────────────┐
- │  1. SCRAPE      │   │  3. ANALYZE     │   │  4. DRAFT            │
- │                 │   │                 │   │                      │
- │  Meltano Tap    │   │  Sentiment      │   │  Google ADK Agent    │
- │  (Playwright +  │──▶│  Aspects       │──▶│  (Gemini API)        │
- │   Singer spec)  │   │  Urgency        │   │                      │
- └────────┬────────┘   └─────────────────┘   └───────────┬──────────┘
-          │                                              │
-          ▼                                              ▼
-   ┌─────────────┐     ┌──────────────┐            ┌─────────────┐
-   │ reviews.csv │───▶│ 2. DIFF       │           │reputation.db│
-   │ (JSONL→CSV) │     │ (new reviews │            │ (draft queue│
-   └─────────────┘     │  only)       │            │  + reviews) │
-                       └──────────────┘            └──────┬──────┘
-                                                          │
-                                                          ▼
-                                                ┌─────────────────┐
-                                                │  5.HUMAN REVIEW │
-                                                │  Streamlit UI   │
-                                                │  (Approve/Edit/ │
-                                                │   Reject drafts)│
-                                                └─────────────────┘
+                                 ▼
+                    ┌──────────────────────────┐
+                    │  1. SCRAPE               │
+                    │  Meltano Tap             │
+                    │  (Playwright + Singer)   │
+                    └────────────┬─────────────┘
+                                 │
+                                 ▼
+                    ┌──────────────────────────┐
+                    │  2. CONVERT & DIFF       │
+                    │  JSONL → CSV → compare   │
+                    │  against DB (new only)   │
+                    └────────────┬─────────────┘
+                                 │
+                                 ▼
+                    ┌──────────────────────────┐
+                    │  3. ANALYZE              │
+                    │  Sentiment + Aspects     │
+                    │  + Urgency Detection     │
+                    └────────────┬─────────────┘
+                                 │
+                                 ▼
+                    ┌──────────────────────────┐
+                    │  4. DRAFT (negatives)    │
+                    │  Google ADK Agent        │
+                    │  (Gemini API)            │
+                    └────────────┬─────────────┘
+                                 │
+                                 ▼
+                    ┌──────────────────────────┐
+                    │      reputation.db       │
+                    │  (reviews + draft queue) │
+                    └────────────┬─────────────┘
+                                 │
+                                 ▼
+                    ┌──────────────────────────┐
+                    │  5. HUMAN REVIEW         │
+                    │  Streamlit UI            │
+                    │  (Approve / Edit /       │
+                    │   Reject drafts)         │
+                    └──────────────────────────┘
 ```
 
 ## Full Workflow
@@ -54,8 +70,8 @@ Responses are **never auto-posted** to Google. Approved responses stay in the da
 
 Works on **Windows, macOS, and Linux**.
 
-- **Git** — [Download here](https://git-scm.com/downloads) (or download the repo as a ZIP from GitHub)
-- **Python 3.10+** — [Download here](https://python.org/downloads). `pip` comes bundled with Python, no separate install needed.
+- **Git** -> [Download here](https://git-scm.com/downloads) (or download the repo as a ZIP from GitHub)
+- **Python 3.10+** -> [Download here](https://python.org/downloads). `pip` comes bundled with Python, no separate install needed.
   - macOS alternative: `brew install python`
   - Verify with: `python --version`
 - **Google Gemini API key** — Get one free at [AI Studio](https://aistudio.google.com/)
