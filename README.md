@@ -50,16 +50,19 @@ Responses are **never auto-posted** to Google. Approved responses stay in the da
 
 ```bash
 git clone https://github.com/joshlijo/Local-Reputation-Agent.git
-cd "Local Reputation Agent"
-
+```
+Open this folder on your IDE.
+```bash
 python -m venv .venv
 # Windows
 .venv\Scripts\activate
 # macOS/Linux
 source .venv/bin/activate
 
-pip install -r requirements.txt
-playwright install chromium
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m playwright install chromium
+meltano install
 ```
 
 ### 2. Configure environment
@@ -143,7 +146,7 @@ The scraper is built as a Singer-compliant tap and can be orchestrated via Melta
 meltano install
 
 # Set your business URL in meltano.yml under plugins > extractors > config:
-#   google_maps_url: https://maps.app.goo.gl/YOUR_LINK
+#   google_maps_url: YOUR_BUSINESS_LINK
 #   place_query: Your Business Name
 
 # Run the ELT pipeline manually
