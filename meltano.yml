@@ -1,0 +1,29 @@
+default_environment: dev
+project_id: local-reputation-agent
+
+environments:
+  - name: dev
+
+plugins:
+  extractors:
+    - name: tap-google-reviews
+      namespace: tap_google_reviews
+      pip_url: -e ./tap-google-reviews
+      executable: tap-google-reviews
+      capabilities:
+        - state
+        - catalog
+        - discover
+      config:
+        google_maps_url: https://maps.app.goo.gl/cGamxLRZ6VqMfCXB7
+        place_query: Cafe Amudham Sarjapur
+        headless: true
+        max_pages: 100
+        rate_limit_seconds: 1.5
+        initial_full_scrape: true
+  loaders:
+    - name: target-jsonl
+      variant: andyh1203
+      pip_url: target-jsonl
+      config:
+        destination_path: ./tap-google-reviews

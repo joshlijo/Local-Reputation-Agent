@@ -25,8 +25,11 @@ htmlcov/
 # =========================
 # Meltano / Singer Artifacts
 # =========================
+.meltano/
+plugins/
 output.jsonl
 output2.jsonl
+reviews.jsonl
 
 # =========================
 # Local / Debug Files

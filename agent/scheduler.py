@@ -66,18 +66,64 @@ logger = logging.getLogger("agent.scheduler")
 
 
 def run_tap():
-    """Run the Google Reviews tap to fetch fresh review data."""
+    """Run the Google Reviews tap to fetch fresh review data.
+
+    Tries Meltano ELT pipeline first (``meltano run``), which provides
+    automatic state management and Singer-spec orchestration.  Falls back
+    to direct tap invocation if Meltano is not installed or not initialized.
+    """
     tap_dir = os.path.join(PROJECT_ROOT, "tap-google-reviews")
+
+    # --- Attempt 1: Meltano ELT pipeline ---
+    # Only attempt if plugins have been installed (extractors dir exists inside .meltano)
+    meltano_extractors = os.path.join(PROJECT_ROOT, ".meltano", "extractors")
+    if os.path.isdir(meltano_extractors):
+        try:
+            logger.info("Running tap via Meltano ELT pipeline...")
+            result = subprocess.run(
+                ["meltano", "run", "tap-google-reviews", "target-jsonl"],
+                cwd=PROJECT_ROOT,
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            if result.returncode == 0:
+                # target-jsonl writes raw records to {destination_path}/{stream_name}.jsonl
+                meltano_output = os.path.join(tap_dir, "reviews.jsonl")
+                if os.path.exists(meltano_output):
+                    logger.info("Converting Meltano output to CSV...")
+                    conv = subprocess.run(
+                        [sys.executable, "convert_jsonl_to_csv.py", "reviews.jsonl"],
+                        cwd=tap_dir,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if conv.returncode == 0:
+                        logger.info("Meltano ELT pipeline complete")
+                        return True
+                    logger.warning("CSV conversion failed: %s", conv.stderr)
+            else:
+                logger.warning("Meltano run failed: %s", result.stderr[:500])
+        except FileNotFoundError:
+            logger.info("Meltano not installed — using direct tap invocation")
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+            logger.warning("Meltano error (%s) — falling back to direct invocation", exc)
+    else:
+        logger.info("Meltano not initialized — using direct tap invocation")
+
+    # --- Attempt 2: Direct tap invocation (fallback) ---
     jsonl_path = os.path.join(tap_dir, "output.jsonl")
 
     logger.info("Running tap-google-reviews scraper...")
-    with open(jsonl_path, "w") as out:
+    with open(jsonl_path, "w", encoding="utf-8") as out:
         result = subprocess.run(
             [sys.executable, "-m", "tap_google_reviews.tap", "--config", "config.json"],
             cwd=tap_dir,
             stdout=out,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     if result.returncode != 0:
         logger.error("Tap failed: %s", result.stderr)

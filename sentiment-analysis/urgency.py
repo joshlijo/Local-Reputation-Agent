@@ -36,7 +36,7 @@ def _has_non_negated_match(keyword: str, text_lower: str) -> bool:
     Check if a keyword appears at least once without being negated.
 
     Scans all occurrences of the keyword. For each one, checks if any of the
-    3 preceding words are negation words. Returns True if at least one
+    2 preceding words are negation words. Returns True if at least one
     occurrence is NOT negated.
 
     This prevents false positives like "No stomach issues" matching
@@ -49,7 +49,7 @@ def _has_non_negated_match(keyword: str, text_lower: str) -> bool:
             return False
         prefix = text_lower[max(0, idx - 40):idx].strip()
         words = prefix.split()
-        recent = words[-3:] if words else []
+        recent = words[-2:] if words else []
         if not any(w in _NEGATION_PREFIXES for w in recent):
             return True  # This occurrence is not negated
         start = idx + len(keyword)

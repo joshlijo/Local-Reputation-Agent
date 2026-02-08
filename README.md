@@ -131,22 +131,41 @@ Alternatively, use system cron:
 0 */6 * * * cd /path/to/project && .venv/bin/python agent/scheduler.py --once
 ```
 
+### Alternative: Meltano ELT Pipeline
+
+The scraper is built as a Singer-compliant tap and can be orchestrated via Meltano for proper ELT pipeline management with automatic state tracking:
+
+```bash
+# Install plugins (one-time setup)
+meltano install
+
+# Set your business URL in meltano.yml under plugins > extractors > config:
+#   google_maps_url: https://maps.app.goo.gl/YOUR_LINK
+#   place_query: Your Business Name
+
+# Run the ELT pipeline manually
+meltano run tap-google-reviews target-jsonl
+```
+
+The scheduler automatically tries `meltano run` first and falls back to direct tap invocation if Meltano is not installed. Both paths produce identical output.
+
 ## Project Structure
 
 ```
 Local Reputation Agent/
+├── meltano.yml                   # Meltano ELT pipeline configuration
 ├── agent/                        # Agentic core
 │   ├── scheduler.py              # Orchestrator — runs tap + sentiment + drafting
 │   ├── app.py                    # Streamlit dashboard (Pulse + Review Queue)
 │   ├── db.py                     # SQLite persistence (reviews + response queue)
 │   ├── response_agent.py         # AI response drafting via Google ADK + Gemini
 │   └── agent_config.py           # Environment and config loading
-├── tap-google-reviews/           # Google Maps review scraper
+├── tap-google-reviews/           # Custom Singer tap (Meltano SDK)
 │   ├── tap_google_reviews/       # Singer SDK tap implementation
 │   │   ├── scraper.py            # Playwright-based scraping with stealth
 │   │   ├── tap.py                # Singer SDK entry point
 │   │   └── streams.py            # Singer stream definitions
-│   ├── config.json               # Scraper configuration
+│   ├── config.json               # Scraper configuration (direct invocation)
 │   └── convert_jsonl_to_csv.py   # JSONL to CSV converter
 ├── sentiment-analysis/           # Sentiment analysis pipeline
 │   ├── sentiment.py              # VADER + rating-based classification
@@ -168,7 +187,7 @@ Local Reputation Agent/
 ### AI responses not generating
 
 - Verify `GEMINI_API_KEY` is set in `.env`
-- Check the Gemini API quota (free tier: ~20 requests/day)
+- Check the Gemini API quota (free tier limits vary by model; check [AI Studio](https://aistudio.google.com/) for your current limits)
 - Responses are capped at `MAX_DRAFTS_PER_RUN` per cycle (default: 5)
 
 ### "Tap failed" warning

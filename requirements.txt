@@ -6,6 +6,9 @@ python-dateutil>=2.8
 # Singer SDK (tap-google-reviews)
 singer-sdk>=0.34
 
+# ELT Orchestration (optional — system works without it via direct tap invocation)
+meltano>=3.0
+
 # Sentiment analysis
 vaderSentiment>=3.3.2
 
