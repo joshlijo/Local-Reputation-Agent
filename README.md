@@ -49,7 +49,7 @@ Responses are **never auto-posted** to Google. Approved responses stay in the da
 ### 1. Clone and install dependencies
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/joshlijo/Local-Reputation-Agent.git
 cd "Local Reputation Agent"
 
 python -m venv .venv
