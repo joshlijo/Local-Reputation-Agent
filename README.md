@@ -5,24 +5,36 @@ An agentic reputation management system for local businesses. Automatically scra
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        agent/scheduler.py                            │
-│                     (The Heartbeat — every 6h)                       │
-│                                                                      │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌────────────────┐     │
-│  │ 1. Scrape│──▶│ 2. Detect│──▶│ 3. Analyze ──▶ 4. Draft     │     │
-│  │  Reviews │   │  New     │   │  Sentiment   │ AI Responses   │     │
-│  └──────────┘   └──────────┘   └──────────┘   └────────────────┘     │
-└──────────────────────────────────────────────────────────────────────┘
-         │                                               │
-         ▼                                               ▼
-   reviews.csv                                    reputation.db
-                                                         │
-                                                         ▼
-                                              ┌────────────────┐
-                                              │ 5.Human Review │
-                                              │ (Streamlit UI) │
-                                              └────────────────┘
+                        ┌─────────────────────┐
+                        │  scheduler.py       │
+                        │  (Heartbeat — 6h)   │
+                        └────────┬────────────┘
+                                 │
+          ┌──────────────────────┼──────────────────────────┐
+          │                      │                          │
+          ▼                      ▼                          ▼
+ ┌─────────────────┐   ┌─────────────────┐   ┌──────────────────────┐
+ │  1. SCRAPE      │   │  3. ANALYZE     │   │  4. DRAFT            │
+ │                 │   │                 │   │                      │
+ │  Meltano Tap    │   │  Sentiment      │   │  Google ADK Agent    │
+ │  (Playwright +  │──▶│  Aspects       │──▶│  (Gemini API)        │
+ │   Singer spec)  │   │  Urgency        │   │                      │
+ └────────┬────────┘   └─────────────────┘   └───────────┬──────────┘
+          │                                              │
+          ▼                                              ▼
+   ┌─────────────┐     ┌──────────────┐            ┌─────────────┐
+   │ reviews.csv │───▶│ 2. DIFF       │           │reputation.db│
+   │ (JSONL→CSV) │     │ (new reviews │            │ (draft queue│
+   └─────────────┘     │  only)       │            │  + reviews) │
+                       └──────────────┘            └──────┬──────┘
+                                                          │
+                                                          ▼
+                                                ┌─────────────────┐
+                                                │  5.HUMAN REVIEW │
+                                                │  Streamlit UI   │
+                                                │  (Approve/Edit/ │
+                                                │   Reject drafts)│
+                                                └─────────────────┘
 ```
 
 ## Full Workflow
@@ -40,9 +52,13 @@ Responses are **never auto-posted** to Google. Approved responses stay in the da
 
 ## Prerequisites
 
-- Python 3.10+
-- Playwright browsers installed
-- Google Gemini API key for AI response drafting
+Works on **Windows, macOS, and Linux**.
+
+- **Git** — [Download here](https://git-scm.com/downloads) (or download the repo as a ZIP from GitHub)
+- **Python 3.10+** — [Download here](https://python.org/downloads). `pip` comes bundled with Python, no separate install needed.
+  - macOS alternative: `brew install python`
+  - Verify with: `python --version`
+- **Google Gemini API key** — Get one free at [AI Studio](https://aistudio.google.com/)
 
 ## Quick Start
 
@@ -79,6 +95,23 @@ Optional variables:
 - `MAX_DRAFTS_PER_RUN` — Max AI responses per cycle (default: `5`)
 
 ### 3. Configure the scraper
+
+To get your business URL: open Google Maps, find your business, click **Share**, and copy the link.
+
+**a) Edit `meltano.yml`** — this is the primary config used by the Meltano ELT pipeline. Update the `config` section under `plugins > extractors > tap-google-reviews`:
+
+```yaml
+config:
+  google_maps_url: YOUR_BUSINESS_LINK
+  place_query: Your Business Name
+  headless: false
+  max_pages: 100
+  rate_limit_seconds: 1.5
+  initial_full_scrape: true
+```
+
+**b) Edit `tap-google-reviews/config.json`** — used as a fallback if Meltano encounters issues:
+
 macOS / Linux / Git Bash
 ```bash
 cp tap-google-reviews/config.json.example tap-google-reviews/config.json
@@ -87,12 +120,13 @@ Windows (Command Prompt)
 ```bash
 copy tap-google-reviews\config.json.example tap-google-reviews\config.json
 ```
-Then edit `tap-google-reviews/config.json` with your business URL and business name with location (for example: Cafe Amudham Sarjapur)
+
+Then update it with the same values:
 
 ```json
 {
   "google_maps_url": "YOUR_BUSINESS_LINK",
-  "place_query": "Your Business name",
+  "place_query": "Your Business Name",
   "headless": false,
   "max_pages": 100,
   "rate_limit_seconds": 1.5,
@@ -100,7 +134,7 @@ Then edit `tap-google-reviews/config.json` with your business URL and business n
 }
 ```
 
-To get the URL: open Google Maps, find your business, click **Share**, and copy the link.
+> **Why two files?** The scheduler tries the Meltano pipeline first (`meltano run`) and falls back to direct tap invocation if Meltano encounters issues. Both paths need your business details.
 
 ### 4. Run the full pipeline (one-shot)
 
@@ -137,23 +171,15 @@ Alternatively, use system cron:
 0 */6 * * * cd /path/to/project && .venv/bin/python agent/scheduler.py --once
 ```
 
-### Alternative: Meltano ELT Pipeline
+### Meltano ELT Pipeline
 
-The scraper is built as a Singer-compliant tap and can be orchestrated via Meltano for proper ELT pipeline management with automatic state tracking:
+The scraper is built as a custom Singer-compliant tap (`tap-google-reviews`) using the [Meltano SDK](https://sdk.meltano.com/), following the pluggable ELT architecture. This means the data extraction is decoupled from loading — today it scrapes Google Maps, but the source can be swapped (e.g., Facebook API, CSV import) without breaking the rest of the system.
+
+The scheduler automatically runs `meltano run tap-google-reviews target-jsonl` to execute the full ELT pipeline with Singer-spec state tracking. To run the pipeline manually:
 
 ```bash
-# Install plugins (one-time setup)
-meltano install
-
-# Set your business URL in meltano.yml under plugins > extractors > config:
-#   google_maps_url: YOUR_BUSINESS_LINK
-#   place_query: Your Business Name
-
-# Run the ELT pipeline manually
 meltano run tap-google-reviews target-jsonl
 ```
-
-The scheduler automatically tries `meltano run` first and falls back to direct tap invocation if Meltano is not installed. Both paths produce identical output.
 
 ## Project Structure
 
@@ -167,11 +193,11 @@ Local Reputation Agent/
 │   ├── response_agent.py         # AI response drafting via Google ADK + Gemini
 │   └── agent_config.py           # Environment and config loading
 ├── tap-google-reviews/           # Custom Singer tap (Meltano SDK)
-│   ├── tap_google_reviews/       # Singer SDK tap implementation
+│   ├── tap_google_reviews/       # Python package
 │   │   ├── scraper.py            # Playwright-based scraping with stealth
 │   │   ├── tap.py                # Singer SDK entry point
 │   │   └── streams.py            # Singer stream definitions
-│   ├── config.json               # Scraper configuration (direct invocation)
+│   ├── config.json               # Scraper configuration (fallback for direct invocation)
 │   └── convert_jsonl_to_csv.py   # JSONL to CSV converter
 ├── sentiment-analysis/           # Sentiment analysis pipeline
 │   ├── sentiment.py              # VADER + rating-based classification
@@ -186,7 +212,7 @@ Local Reputation Agent/
 
 ### Scraper returns zero reviews
 
-- Check that `config.json` has the correct `google_maps_url` for your business
+- Check that `meltano.yml` and `tap-google-reviews/config.json` have the correct `google_maps_url` and `place_query` for your business
 - Try setting `"headless": false` to debug visually
 - Google Maps may serve reduced UI to automated browsers; see stealth notes in the codebase
 
