@@ -68,7 +68,6 @@ Create a `.env` file in the project root:
 
 ```env
 GEMINI_API_KEY=your-api-key-here
-BUSINESS_NAME=Your Business Name
 ```
 
 Optional variables:
