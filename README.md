@@ -6,13 +6,13 @@ An agentic reputation management system for local businesses. Automatically scra
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                        agent/scheduler.py                           │
-│                     (The Heartbeat — every 6h)                      │
-│                                                                     │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌────────────────┐  │
-│  │ 1. Scrape│──▶│ 2. Detect│──▶│ 3. Analyze│──▶│ 4. Draft       │  │
-│  │  Reviews │   │  New     │   │  Sentiment│   │  AI Responses  │  │
-│  └──────────┘   └──────────┘   └──────────┘   └────────────────┘  │
+│                        agent/scheduler.py                            │
+│                     (The Heartbeat — every 6h)                       │
+│                                                                      │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌────────────────┐     │
+│  │ 1. Scrape│──▶│ 2. Detect│──▶│ 3. Analyze ──▶ 4. Draft     │     │
+│  │  Reviews │   │  New     │   │  Sentiment   │ AI Responses   │     │
+│  └──────────┘   └──────────┘   └──────────┘   └────────────────┘     │
 └──────────────────────────────────────────────────────────────────────┘
          │                                               │
          ▼                                               ▼
@@ -20,8 +20,8 @@ An agentic reputation management system for local businesses. Automatically scra
                                                          │
                                                          ▼
                                               ┌────────────────┐
-                                              │ 5. Human Review│
-                                              │  (Streamlit UI)│
+                                              │ 5.Human Review │
+                                              │ (Streamlit UI) │
                                               └────────────────┘
 ```
 
