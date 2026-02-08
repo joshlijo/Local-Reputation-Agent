@@ -85,8 +85,9 @@ Then edit `tap-google-reviews/config.json` with your business URL:
 
 ```json
 {
-  "google_maps_url": "https://maps.app.goo.gl/YOUR_BUSINESS_LINK",
-  "headless": true,
+  "google_maps_url": "YOUR_BUSINESS_LINK",
+  "place_query": "Your Business name",
+  "headless": false,
   "max_pages": 100,
   "rate_limit_seconds": 1.5,
   "initial_full_scrape": true
