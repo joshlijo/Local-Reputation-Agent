@@ -76,11 +76,14 @@ Optional variables:
 - `MAX_DRAFTS_PER_RUN` — Max AI responses per cycle (default: `5`)
 
 ### 3. Configure the scraper
-
+macOS / Linux / Git Bash
 ```bash
 cp tap-google-reviews/config.json.example tap-google-reviews/config.json
 ```
-
+Windows (Command Prompt)
+```bash
+copy tap-google-reviews\config.json.example tap-google-reviews\config.json
+```
 Then edit `tap-google-reviews/config.json` with your business URL and business name (with location, for ex: Cafe Amudham Sarjapur):
 
 ```json
