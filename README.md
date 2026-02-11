@@ -70,6 +70,7 @@ Responses are **never auto-posted** to Google. Approved responses stay in the da
 
 Works on **Windows, macOS, and Linux**.
 
+- **Google Chrome (stable)** -> [Download here](https://www.google.com/chrome/)
 - **Git** -> [Download here](https://git-scm.com/downloads) (or download the repo as a ZIP from GitHub)
 - **Python 3.10+** -> [Download here](https://python.org/downloads). `pip` comes bundled with Python, no separate install needed.
   - macOS alternative: `brew install python`
